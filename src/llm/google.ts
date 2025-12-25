@@ -1,0 +1,54 @@
+import fetch from 'node-fetch';
+import { AnalysisRequest, AnalysisResponse } from '../types';
+import { LLMProvider } from './base';
+
+export class GoogleProvider extends LLMProvider {
+  private defaultModel = 'gemini-1.5-pro';
+
+  async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
+    const model = this.model || this.defaultModel;
+    const baseURL = this.baseURL || 'https://generativelanguage.googleapis.com/v1beta';
+
+    const systemPrompt = this.buildSystemPrompt();
+    const userPrompt = this.buildUserPrompt(request);
+
+    const response = await fetch(
+      `${baseURL}/models/${model}:generateContent?key=${this.apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `${systemPrompt}\n\n${userPrompt}`,
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 1000,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Google API error: ${response.status} - ${error}`);
+    }
+
+    const data = await response.json() as any;
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!content) {
+      throw new Error('No response from Google Gemini');
+    }
+
+    return this.parseResponse(content);
+  }
+}
