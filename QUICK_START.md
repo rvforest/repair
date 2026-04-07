@@ -69,6 +69,14 @@ export REPAIR_MODEL=llama2
 export REPAIR_LOCAL_URL=http://localhost:11434/v1
 ```
 
+Optional hardening flags:
+
+```bash
+export REPAIR_INCLUDE_CWD=false
+export REPAIR_MAX_CAPTURE_BYTES=65536
+export REPAIR_MAX_PERSISTED_OUTPUT_BYTES=16384
+```
+
 ## Usage
 
 1. **Install shell integration**:
@@ -112,6 +120,8 @@ export REPAIR_LOCAL_URL=http://localhost:11434/v1
      1. npm install express
      2. npm install
    ```
+
+Only failed commands are persisted for analysis. If the last command succeeds, `repair` will tell you that no failed command is currently available.
 
 ## Advanced Usage
 
@@ -170,6 +180,14 @@ Set the REPAIR_API_KEY environment variable or create a config file.
 
 Run a command in the configured shell before calling `repair`.
 
+### "No failed command is currently available for analysis"
+
+Run `repair` immediately after a command that exits non-zero.
+
+### "The last failed command was excluded from capture by default"
+
+repAIr skips a small denylist of high-risk commands such as `sudo`, `pass`, `env`, and `printenv`. This is intentional.
+
 ### "The captured session data is invalid"
 
 Refresh the hook setup and capture a new command:
@@ -184,5 +202,6 @@ eval "$(repair init zsh)"
 - Configure your preferred LLM provider and model
 - Try different error scenarios
 - Use `--confirm` mode for sensitive outputs
+- Review the threat model and pre-release checklist in the README before sharing the tool publicly
 
 Happy debugging!

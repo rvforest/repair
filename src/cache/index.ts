@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import { AnalysisRequest, AnalysisResponse, CacheEntry } from '../types';
+import { ensurePrivateDirectory, pathExists, readTextFileSafe, writeTextFileAtomic } from '../storage';
 
 export class CacheManager {
   private cacheDir: string;
@@ -14,9 +15,7 @@ export class CacheManager {
     this.ttl = ttl;
 
     // Create cache directory if it doesn't exist
-    if (!fs.existsSync(this.cacheDir)) {
-      fs.mkdirSync(this.cacheDir, { recursive: true });
-    }
+    ensurePrivateDirectory(this.cacheDir);
   }
 
   private getCacheKey(request: AnalysisRequest): string {
@@ -41,12 +40,12 @@ export class CacheManager {
     const key = this.getCacheKey(request);
     const cachePath = this.getCachePath(key);
 
-    if (!fs.existsSync(cachePath)) {
+    if (!pathExists(cachePath)) {
       return null;
     }
 
     try {
-      const content = fs.readFileSync(cachePath, 'utf-8');
+      const content = readTextFileSafe(cachePath, 256 * 1024);
       const entry: CacheEntry = JSON.parse(content);
 
       // Check if cache is expired
@@ -77,7 +76,7 @@ export class CacheManager {
     };
 
     try {
-      fs.writeFileSync(cachePath, JSON.stringify(entry, null, 2), 'utf-8');
+      writeTextFileAtomic(cachePath, JSON.stringify(entry, null, 2));
     } catch (error) {
       // Silently fail if we can't write cache
       console.warn('Warning: Could not write to cache');
@@ -85,7 +84,7 @@ export class CacheManager {
   }
 
   async clear(): Promise<void> {
-    if (!fs.existsSync(this.cacheDir)) {
+    if (!pathExists(this.cacheDir)) {
       return;
     }
 
@@ -102,7 +101,7 @@ export class CacheManager {
   }
 
   async cleanExpired(): Promise<void> {
-    if (!fs.existsSync(this.cacheDir)) {
+    if (!pathExists(this.cacheDir)) {
       return;
     }
 
@@ -115,7 +114,7 @@ export class CacheManager {
 
         const filePath = path.join(this.cacheDir, file);
         try {
-          const content = fs.readFileSync(filePath, 'utf-8');
+          const content = readTextFileSafe(filePath, 256 * 1024);
           const entry: CacheEntry = JSON.parse(content);
 
           if (now - entry.timestamp > this.ttl) {

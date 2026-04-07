@@ -1,9 +1,11 @@
 import { AnalysisRequest, AnalysisResponse } from '../types';
+import { TerminalSanitizer } from '../security';
 
 export abstract class LLMProvider {
   protected apiKey: string;
   protected model?: string;
   protected baseURL?: string;
+  private readonly sanitizer = new TerminalSanitizer();
 
   constructor(apiKey: string, model?: string, baseURL?: string) {
     this.apiKey = apiKey;
@@ -30,16 +32,16 @@ Respond with valid JSON in this exact format:
   }
 
   protected buildUserPrompt(request: AnalysisRequest): string {
-    let prompt = `Command that was run:\n\`\`\`\n${request.command}\n\`\`\`\n\n`;
-    prompt += `Output:\n\`\`\`\n${request.output}\n\`\`\`\n\n`;
+    let prompt = `Command that was run:\n\`\`\`\n${this.sanitizer.sanitize(request.command)}\n\`\`\`\n\n`;
+    prompt += `Output:\n\`\`\`\n${this.truncateOutput(this.sanitizer.sanitize(request.output))}\n\`\`\`\n\n`;
 
     if (request.shellContext) {
       prompt += `Context:\n`;
       if (request.shellContext.cwd) {
-        prompt += `- Working directory: ${request.shellContext.cwd}\n`;
+        prompt += `- Working directory: ${this.sanitizer.sanitize(request.shellContext.cwd)}\n`;
       }
       if (request.shellContext.shell) {
-        prompt += `- Shell: ${request.shellContext.shell}\n`;
+        prompt += `- Shell: ${this.sanitizer.sanitize(request.shellContext.shell)}\n`;
       }
       if (request.shellContext.exitCode !== undefined) {
         prompt += `- Exit code: ${request.shellContext.exitCode}\n`;
@@ -65,18 +67,40 @@ Respond with valid JSON in this exact format:
       }
 
       return {
-        explanation: parsed.explanation,
-        fixes: parsed.fixes,
-        additionalContext: parsed.additionalContext,
+        explanation: this.sanitizer.sanitize(parsed.explanation),
+        fixes: parsed.fixes.map((fix: string) => this.sanitizer.sanitize(fix)),
+        additionalContext: parsed.additionalContext ? this.sanitizer.sanitize(parsed.additionalContext) : undefined,
       };
     } catch (error) {
       // Fallback: treat entire response as explanation
       return {
-        explanation: content,
+        explanation: this.sanitizer.sanitize(content),
         fixes: [],
         additionalContext: 'Note: Could not parse structured response from LLM',
       };
     }
+  }
+
+  protected resolveBaseURL(defaultURL: string, allowLocalHttp: boolean = false): string {
+    const candidate = this.baseURL || defaultURL;
+    const parsed = new URL(candidate);
+    const hostname = parsed.hostname.toLowerCase();
+    const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+
+    if (parsed.protocol === 'https:') {
+      return parsed.toString().replace(/\/+$/, '');
+    }
+
+    if (allowLocalHttp && parsed.protocol === 'http:' && isLocalHost) {
+      return parsed.toString().replace(/\/+$/, '');
+    }
+
+    throw new Error(`Insecure provider endpoint is not allowed: ${candidate}`);
+  }
+
+  protected buildHttpError(providerName: string, status: number, statusText: string): Error {
+    const suffix = statusText ? ` ${statusText}` : '';
+    return new Error(`${providerName} API error: ${status}${suffix}`);
   }
 
   protected truncateOutput(output: string, maxTokens: number = 2000): string {

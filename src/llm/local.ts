@@ -12,8 +12,10 @@ export class LocalProvider extends LLMProvider {
       throw new Error('Base URL is required for local model provider');
     }
 
+    const baseURL = this.resolveBaseURL(this.baseURL, true);
+
     // Use OpenAI-compatible API format (works with Ollama, LM Studio, etc.)
-    const response = await fetch(`${this.baseURL}/chat/completions`, {
+    const response = await fetch(`${baseURL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -36,8 +38,7 @@ export class LocalProvider extends LLMProvider {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Local model API error: ${response.status} - ${error}`);
+      throw this.buildHttpError('Local model', response.status, response.statusText);
     }
 
     const data = await response.json() as any;

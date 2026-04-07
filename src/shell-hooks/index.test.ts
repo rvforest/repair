@@ -23,26 +23,37 @@ describe('shell hook generation', () => {
     expect(getSupportedShells()).toEqual(['bash', 'zsh']);
   });
 
-  it('generates a zsh snippet with the session writer command', () => {
+  it('generates a zsh snippet with secure stdin capture and cleanup hooks', () => {
     const snippet = generateShellInit('zsh');
 
     expect(snippet).toContain('add-zsh-hook preexec repair_preexec');
-    expect(snippet).toContain('repair _write-session');
+    expect(snippet).toContain('repair _capture-session');
+    expect(snippet).toContain('add-zsh-hook zshexit repair_zsh_cleanup');
+    expect(snippet).toContain('sudo|doas|su|pass|op|bw|vault|secret-tool|security|env|printenv');
     expect(snippet).toContain('REPAIR_SHELL_INTEGRATION=1');
     expect(snippet).toContain('repair_start_redirect');
     expect(snippet).toContain('repair_restore_redirect');
     expect(snippet).toContain('} always {');
   });
 
-  it('generates a bash snippet with DEBUG and PROMPT_COMMAND hooks', () => {
+  it('generates a bash snippet with DEBUG, PROMPT_COMMAND, and cleanup hooks', () => {
     const snippet = generateShellInit('bash');
 
     expect(snippet).toContain("trap 'repair_debug_trap' DEBUG");
+    expect(snippet).toContain("trap 'repair_shell_cleanup' EXIT");
     expect(snippet).toContain("PROMPT_COMMAND='repair_prompt_command'");
-    expect(snippet).toContain('repair _write-session');
+    expect(snippet).toContain('repair _capture-session');
     expect(snippet).toContain('repair_start_redirect');
     expect(snippet).toContain('repair_restore_redirect');
     expect(snippet).toContain('local _output_file=');
+    expect(snippet).toContain('< "$_output_file"');
+  });
+
+  it('skips sensitive commands by default without over-skipping cat', () => {
+    const snippet = generateShellInit('bash');
+
+    expect(snippet).toContain('sudo|doas|su|pass|op|bw|vault|secret-tool|security|env|printenv');
+    expect(snippet).not.toContain('cat|');
   });
 
   it('waits for tee helpers before returning from restore', () => {
