@@ -77,6 +77,9 @@ repAIr can be configured via environment variables or a config file at `~/.confi
   - Options: `openai`, `anthropic`, `google`, `openrouter`, `local`
 - `REPAIR_MODEL` - Specific model to use (optional, uses provider defaults)
 - `REPAIR_LOCAL_URL` - Base URL for local model API (default: `http://localhost:11434/v1`)
+- `REPAIR_INCLUDE_CWD` - Include sanitized cwd in outbound requests when explicitly set to `true`
+- `REPAIR_MAX_CAPTURE_BYTES` - Maximum bytes ingested from shell capture stdin (default: `65536`)
+- `REPAIR_MAX_PERSISTED_OUTPUT_BYTES` - Maximum sanitized output bytes retained for analysis (default: `16384`)
 
 ### Config File
 
@@ -89,7 +92,10 @@ Create `~/.config/repair/config.json`:
   "model": "claude-3-5-sonnet-20241022",
   "cacheEnabled": true,
   "cacheTTL": 86400000,
-  "confirmBeforeSend": false
+   "confirmBeforeSend": false,
+   "includeCwd": false,
+   "maxCaptureBytes": 65536,
+   "maxPersistedOutputBytes": 16384
 }
 ```
 
@@ -101,6 +107,9 @@ Create `~/.config/repair/config.json`:
 - `cacheEnabled` (boolean): Enable response caching (default: true)
 - `cacheTTL` (number): Cache time-to-live in milliseconds (default: 86400000 = 24 hours)
 - `confirmBeforeSend` (boolean): Prompt before sending data to LLM (default: false)
+- `includeCwd` (boolean): Opt in to including sanitized cwd in outbound requests (default: false)
+- `maxCaptureBytes` (number): Bound stdin capture size before persistence (default: 65536)
+- `maxPersistedOutputBytes` (number): Bound sanitized output retained for analysis (default: 16384)
 
 ## Supported LLM Providers
 
@@ -228,19 +237,34 @@ Info: Analyzing error with LLM...
 
 repAIr includes built-in security features to protect sensitive information:
 
-1. **Secret Detection**: Automatically scans output for common secret patterns (API keys, tokens, passwords)
-2. **Automatic Redaction**: Detected secrets are replaced with `[REDACTED]` before sending to LLM
-3. **Confirmation Mode**: Use `--confirm` to review data before sending
-4. **Local Model Support**: Use local LLMs to keep all data on your machine
+1. **Sanitize Before Persistence**: The shell hook writes only a bounded, sanitized failure bundle to XDG state
+2. **Automatic Redaction**: Detected secrets are deterministically replaced before persistence, caching, and provider requests
+3. **Private Local Storage**: State, config, and cache files are created with explicit private permissions and atomic writes
+4. **Sensitive Command Skip List**: High-risk entrypoints such as `sudo`, `doas`, `su`, `pass`, `op`, `bw`, `vault`, `secret-tool`, `security`, `env`, and `printenv` are skipped by default
+5. **Terminal-Safe Rendering**: Captured text and model responses are stripped of ANSI, OSC, and other unsafe control sequences before display
+6. **Confirmation Mode**: Use `--confirm` to review the exact sanitized payload before it leaves the machine
+7. **Local Model Support**: Use local LLMs to keep analysis traffic on your machine
 
-**Detected Secret Patterns:**
+**Supported Secret Detection Strategy:**
 
 - API keys (OpenAI, GitHub, Google, etc.)
 - AWS credentials
 - Private keys (RSA, SSH)
 - JWT tokens
 - Passwords in URLs
-- Credit card numbers
+- Generic token-like strings that are long, mixed, and low-value to preserve verbatim
+
+Redaction is best-effort rather than perfect. repAIr is designed for normal development workflows, not for highly regulated, high-secrecy, or adversarial multi-user environments.
+
+General-purpose inspection commands such as `cat`, `grep`, `sed`, and `jq` are still capturable by default; they are not skipped solely because they can display file contents.
+
+## Threat Model
+
+repAIr is designed to reduce accidental disclosure during routine development work:
+
+- In scope: accidental secret persistence, terminal escape replay, oversized capture, stale failure reuse, and permissive local file modes.
+- Out of scope: malicious software already running as the same user, compromised shell startup files, and guarantees required for regulated or high-secrecy environments.
+- Residual risk: secret detection is heuristic, and a sanitized failure bundle is still stored locally long enough to support the "run a command, then run repair" workflow.
 
 ## Caching
 
@@ -248,7 +272,8 @@ repAIr caches LLM responses to reduce API costs and improve performance:
 
 - Cache location: `~/.cache/repair/` (or `$XDG_CACHE_HOME/repair/`)
 - Default TTL: 24 hours
-- Cache key: SHA-256 hash of command, output, and shell metadata
+- Cache key: SHA-256 hash of the sanitized command, sanitized output excerpt, and allowed shell metadata
+- Cached payloads contain only sanitized request/response data
 - Bypass cache: Use `--no-cache` flag
 
 ## Troubleshooting
@@ -275,6 +300,14 @@ Or create a config file at `~/.config/repair/config.json`.
 ### "No captured command output is available yet"
 
 Run a command first in the same configured shell session, then invoke `repair`.
+
+### "No failed command is currently available for analysis"
+
+The most recent command exited successfully, so repAIr cleared any previously stored failure bundle. Run `repair` immediately after a command that fails.
+
+### "The last failed command was excluded from capture by default"
+
+repAIr skips a narrow denylist of high-risk commands such as `sudo` and `printenv`. This protects against persisting privileged or secret-disclosure output by default.
 
 ### "The captured session data is invalid"
 
@@ -326,12 +359,12 @@ npm run format
 ## How It Works
 
 1. **Detection**: Checks whether shell integration is configured and a captured session is available
-2. **Capture**: Shell hooks record the command, output, exit code, and timestamp
-3. **Retrieval**: `repair` reads the latest session from the XDG state directory
-4. **Security**: Scans for and redacts potential secrets
-5. **Caching**: Checks cache for previous analysis
-6. **Analysis**: Sends to LLM with structured prompt
-7. **Display**: Formats and displays explanation and fixes
+2. **Capture**: Shell hooks record the command, mirror output to a private temp file, and avoid the sensitive-command denylist by default
+3. **Ingestion**: `repair _capture-session` reads bounded bytes from stdin, strips control sequences, redacts likely secrets, and clears state for successful commands
+4. **Retrieval**: `repair` reads the latest sanitized failure bundle from the XDG state directory
+5. **Caching**: Checks the sanitized cache for a previous analysis
+6. **Analysis**: Sends only sanitized request fields to the configured provider over HTTPS for remote endpoints
+7. **Display**: Sanitizes model output again before formatting and printing it
 
 ## Architecture
 
@@ -343,8 +376,8 @@ repair/
 │   ├── llm/           # LLM provider integrations
 │   ├── output/        # Output formatting
 │   ├── security/      # Secret detection and redaction
-│   │   ├── session/       # Captured shell session storage
-│   │   ├── shell-hooks/   # Shell integration snippet generation
+│   ├── session/       # Captured shell session storage
+│   ├── shell-hooks/   # Shell integration snippet generation
 │   ├── types/         # TypeScript type definitions
 │   ├── cli.ts         # CLI entry point
 │   └── index.ts       # Main orchestration
@@ -359,6 +392,15 @@ Contributions are welcome! Please:
 3. Make your changes
 4. Add tests
 5. Submit a pull request
+
+## Pre-Release Checklist
+
+- Verify that no raw command output is durably persisted during normal operation.
+- Verify that state, config, and cache directories are `0700` and files are `0600`.
+- Verify that `repair --confirm` and formatted model output strip terminal control sequences.
+- Verify that successful commands clear the stored failure bundle.
+- Verify that skipped denylisted commands such as `sudo` do not overwrite an existing non-sensitive failure bundle.
+- Verify that public docs still describe the consent boundary, residual risks, and unsupported high-secrecy environments.
 
 ## License
 

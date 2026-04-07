@@ -7,7 +7,7 @@ export class OpenAIProvider extends LLMProvider {
 
   async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
     const model = this.model || this.defaultModel;
-    const baseURL = this.baseURL || 'https://api.openai.com/v1';
+    const baseURL = this.resolveBaseURL('https://api.openai.com/v1');
 
     const response = await fetch(`${baseURL}/chat/completions`, {
       method: 'POST',
@@ -33,8 +33,7 @@ export class OpenAIProvider extends LLMProvider {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`OpenAI API error: ${response.status} - ${error}`);
+      throw this.buildHttpError('OpenAI', response.status, response.statusText);
     }
 
     const data = await response.json() as any;

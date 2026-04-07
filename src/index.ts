@@ -3,8 +3,8 @@ import { createLLMProvider } from './llm';
 import { SecurityFilter } from './security';
 import { CacheManager } from './cache';
 import { OutputFormatter } from './output';
-import { isShellIntegrationConfigured, SessionError, SessionStore } from './session';
-import { AnalysisRequest, AnalysisResponse, Config } from './types';
+import { getShellCaptureStatus, isShellIntegrationConfigured, SessionError, SessionStore } from './session';
+import { AnalysisRequest, AnalysisResponse, Config, SanitizedSessionBundle } from './types';
 
 interface MainOptions {
   cacheEnabled?: boolean;
@@ -15,7 +15,7 @@ interface MainOptions {
 interface MainDependencies {
   configManager?: Pick<ConfigManager, 'load' | 'validate'>;
   sessionStore?: Pick<SessionStore, 'read' | 'toAnalysisRequest'>;
-  securityFilter?: Pick<SecurityFilter, 'detectSecrets' | 'redactSecrets' | 'confirmSend'>;
+  securityFilter?: Pick<SecurityFilter, 'sanitizeAnalysisRequest' | 'sanitizeResponse' | 'confirmSend' | 'sanitizeForDisplay'>;
   cacheFactory?: (ttl: number) => {
     get(request: AnalysisRequest): Promise<AnalysisResponse | null>;
     set(request: AnalysisRequest, response: AnalysisResponse): Promise<void>;
@@ -37,16 +37,28 @@ export async function main(
     const createCache = dependencies.cacheFactory || ((ttl: number) => new CacheManager(ttl));
     const llmProviderFactory = dependencies.llmProviderFactory || createLLMProvider;
 
-    let analysisRequest: AnalysisRequest;
+    let sessionBundle: SanitizedSessionBundle;
 
     try {
-      const session = await sessionStore.read();
-      analysisRequest = sessionStore.toAnalysisRequest(session);
+      sessionBundle = await sessionStore.read();
     } catch (error) {
       const sessionErrorCode = getSessionErrorCode(error);
 
       if (sessionErrorCode === 'missing') {
         if (isShellIntegrationConfigured()) {
+          const captureStatus = getShellCaptureStatus();
+          if (captureStatus.kind === 'success') {
+            throw new Error(
+              'No failed command is currently available for analysis. Run repair immediately after a command that exits non-zero.',
+            );
+          }
+
+          if (captureStatus.kind === 'skipped') {
+            throw new Error(
+              `The last failed command was excluded from capture by default because ${captureStatus.entrypoint || 'it'} is on the sensitive-command denylist.`,
+            );
+          }
+
           throw new Error(
             'No captured command output is available yet. Run a command in this shell, then run repair again.',
           );
@@ -66,17 +78,6 @@ export async function main(
       throw error;
     }
 
-    if (options.verbose) {
-      console.log(formatter.formatInfo(`Captured command: ${analysisRequest.command}`));
-      console.log(formatter.formatInfo(`Captured output length: ${analysisRequest.output.length} chars`));
-      if (analysisRequest.shellContext?.shell) {
-        console.log(formatter.formatInfo(`Captured shell: ${analysisRequest.shellContext.shell}`));
-      }
-      if (analysisRequest.shellContext?.exitCode !== undefined) {
-        console.log(formatter.formatInfo(`Exit code: ${analysisRequest.shellContext.exitCode}`));
-      }
-    }
-
     const config = await configManager.load();
 
     // Allow options to override config
@@ -87,6 +88,29 @@ export async function main(
     };
 
     configManager.validate(effectiveConfig);
+
+    let analysisRequest = sessionStore.toAnalysisRequest(sessionBundle, effectiveConfig.includeCwd === true);
+    analysisRequest = securityFilter.sanitizeAnalysisRequest(analysisRequest, {
+      includeCwd: effectiveConfig.includeCwd,
+      maxPersistedOutputBytes: effectiveConfig.maxPersistedOutputBytes,
+    });
+
+    if (options.verbose) {
+      console.log(formatter.formatInfo(`Captured command: ${analysisRequest.command}`));
+      console.log(formatter.formatInfo(`Captured output length: ${analysisRequest.output.length} chars`));
+      if (analysisRequest.shellContext?.shell) {
+        console.log(formatter.formatInfo(`Captured shell: ${analysisRequest.shellContext.shell}`));
+      }
+      if (analysisRequest.shellContext?.exitCode !== undefined) {
+        console.log(formatter.formatInfo(`Exit code: ${analysisRequest.shellContext.exitCode}`));
+      }
+      if (sessionBundle.redactionsApplied > 0) {
+        console.log(formatter.formatInfo(`Redactions applied: ${sessionBundle.redactionsApplied}`));
+      }
+      if (sessionBundle.truncated) {
+        console.log(formatter.formatInfo('Captured output was truncated before persistence'));
+      }
+    }
 
     if (options.verbose) {
       console.log(formatter.formatInfo(`Using provider: ${effectiveConfig.provider}`));
@@ -99,29 +123,14 @@ export async function main(
       throw new Error('Could not load captured command and output from shell session');
     }
 
-    const shellContextString = JSON.stringify(analysisRequest.shellContext || {});
-    const hasSecrets = securityFilter.detectSecrets(
-      analysisRequest.command + '\n' + analysisRequest.output + '\n' + shellContextString
-    );
-
-    if (hasSecrets) {
-      console.log(
-        formatter.formatWarning('Potential secrets detected in output. Redacting before sending to LLM.')
-      );
-      analysisRequest.command = securityFilter.redactSecrets(analysisRequest.command);
-      analysisRequest.output = securityFilter.redactSecrets(analysisRequest.output);
-      if (analysisRequest.shellContext?.cwd) {
-        analysisRequest.shellContext.cwd = securityFilter.redactSecrets(analysisRequest.shellContext.cwd);
-      }
-      if (analysisRequest.shellContext?.shell) {
-        analysisRequest.shellContext.shell = securityFilter.redactSecrets(analysisRequest.shellContext.shell);
-      }
-    }
-
     if (effectiveConfig.confirmBeforeSend) {
       const confirmed = await securityFilter.confirmSend(
         analysisRequest.command,
-        analysisRequest.output
+        analysisRequest.output,
+        {
+          truncated: sessionBundle.truncated,
+          redactionsApplied: sessionBundle.redactionsApplied,
+        },
       );
 
       if (!confirmed) {
@@ -156,7 +165,7 @@ export async function main(
     }
 
     const llmProvider = llmProviderFactory(effectiveConfig);
-    response = await llmProvider.analyze(analysisRequest);
+    response = securityFilter.sanitizeResponse(await llmProvider.analyze(analysisRequest));
 
     if (effectiveConfig.cacheEnabled && cacheManager) {
       await cacheManager.set(analysisRequest, response);
