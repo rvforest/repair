@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
-import { AnalysisResponse, CacheEntry } from '../types';
+import { AnalysisRequest, AnalysisResponse, CacheEntry } from '../types';
 
 export class CacheManager {
   private cacheDir: string;
@@ -19,9 +19,17 @@ export class CacheManager {
     }
   }
 
-  private getCacheKey(command: string, output: string): string {
+  private getCacheKey(request: AnalysisRequest): string {
     const hash = crypto.createHash('sha256');
-    hash.update(command + '\n' + output);
+    hash.update(
+      JSON.stringify({
+        command: request.command,
+        output: request.output,
+        cwd: request.shellContext?.cwd,
+        shell: request.shellContext?.shell,
+        exitCode: request.shellContext?.exitCode,
+      })
+    );
     return hash.digest('hex');
   }
 
@@ -29,8 +37,8 @@ export class CacheManager {
     return path.join(this.cacheDir, `${key}.json`);
   }
 
-  async get(command: string, output: string): Promise<AnalysisResponse | null> {
-    const key = this.getCacheKey(command, output);
+  async get(request: AnalysisRequest): Promise<AnalysisResponse | null> {
+    const key = this.getCacheKey(request);
     const cachePath = this.getCachePath(key);
 
     if (!fs.existsSync(cachePath)) {
@@ -59,8 +67,8 @@ export class CacheManager {
     }
   }
 
-  async set(command: string, output: string, response: AnalysisResponse): Promise<void> {
-    const key = this.getCacheKey(command, output);
+  async set(request: AnalysisRequest, response: AnalysisResponse): Promise<void> {
+    const key = this.getCacheKey(request);
     const cachePath = this.getCachePath(key);
 
     const entry: CacheEntry = {

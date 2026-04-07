@@ -25,8 +25,12 @@ The system SHALL detect when shell integration is unavailable and provide helpfu
 - **THEN** the tool displays an error message explaining that shell integration must be installed with `repair init <shell>`
 
 #### Scenario: No command captured yet
-- **WHEN** shell integration is installed but no command has completed yet in the current shell session
-- **THEN** the tool explains that there is no captured command output to analyze yet
+- **WHEN** shell integration is installed but no command has been captured yet in the current shell session
+- **THEN** the tool explains that there is no command output to analyze yet
+
+#### Scenario: Last command succeeded
+- **WHEN** shell integration is installed and the most recent command completed successfully
+- **THEN** the tool explains that no command is currently available to analyze and instructs the user to rerun `repair` immediately after a command that produced output they want analyzed
 
 ## ADDED Requirements
 

@@ -44,6 +44,9 @@ Respond with valid JSON in this exact format:
       if (request.shellContext.exitCode !== undefined) {
         prompt += `- Exit code: ${request.shellContext.exitCode}\n`;
       }
+      if (request.shellContext.timestamp) {
+        prompt += `- Captured at: ${request.shellContext.timestamp}\n`;
+      }
       prompt += '\n';
     }
 

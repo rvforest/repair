@@ -11,7 +11,7 @@ The system SHALL capture the most recent command session from supported shell ho
 
 #### Scenario: Capture command output after execution
 - **WHEN** the command completes in a supported configured shell
-- **THEN** the shell integration captures the command output and exit code and forwards them to the CLI session writer
+- **THEN** the shell integration captures the command output and exit code and forwards the session to the CLI session writer
 
 #### Scenario: Multi-line command preservation
 - **WHEN** the executed command spans multiple lines

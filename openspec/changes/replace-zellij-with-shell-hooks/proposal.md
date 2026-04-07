@@ -14,9 +14,9 @@ The current product and spec assume the CLI can only inspect terminal output whe
 ## Impact
 - Affected specs:
   - `cli-utility` (modified) - CLI setup and runtime expectations change from Zellij detection to shell integration setup
-  - `shell-hook-integration` (new) - Defines shell snippet generation, session capture, and state file retrieval
+  - `shell-hook-integration` (new) - Defines shell snippet generation, failed-session capture, state cleanup, and state file retrieval
   - `zellij-integration` (removed) - The previous terminal multiplexer requirement is no longer part of the product
-  - `llm-analysis` (modified) - Analysis input is sourced from captured shell session data, including exit metadata when available
+  - `llm-analysis` (modified) - Analysis input is sourced from captured failed shell session data, including exit metadata when available
 - Affected code:
   - `src/zellij/` and all Zellij-specific entrypoint logic will be removed or replaced
   - CLI argument handling will gain `init` and internal session-writing subcommands

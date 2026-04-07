@@ -5,7 +5,8 @@ A CLI tool that uses Large Language Models to explain terminal errors and sugges
 ## Features
 
 - **Intelligent Error Analysis**: Uses LLM to understand and explain any error message
-- **Zero Re-execution**: Retrieves command output via Zellij without re-running commands
+- **Zero Re-execution**: Reads the latest captured shell session without re-running commands
+- **Shell Hook Setup**: Generates Bash and Zsh integration with `repair init <shell>`
 - **Multiple LLM Providers**: Support for OpenAI, Anthropic (Claude), Google (Gemini), OpenRouter, and local models
 - **Privacy-Focused**: Automatic secret detection and redaction before sending data to LLMs
 - **Response Caching**: Reduces API costs by caching responses for 24 hours
@@ -14,7 +15,7 @@ A CLI tool that uses Large Language Models to explain terminal errors and sugges
 ## Requirements
 
 - **Node.js** 16.0.0 or higher
-- **Zellij** 0.38.0 or higher
+- **Supported shell**: Bash or Zsh
 
 ## Installation
 
@@ -36,27 +37,27 @@ npm link
 
 ## Quick Start
 
-1. **Install Zellij** (if not already installed):
-
-   ```bash
-   # macOS
-   brew install zellij
-
-   # Linux
-   cargo install zellij
-   ```
-
-2. **Start a Zellij session**:
-
-   ```bash
-   zellij
-   ```
-
-3. **Set up your API key**:
+1. **Set up your API key**:
 
    ```bash
    export REPAIR_API_KEY=your-api-key-here
    export REPAIR_PROVIDER=openai  # or anthropic, google, openrouter, local
+   ```
+
+2. **Install shell integration**:
+
+   ```bash
+   # Zsh
+   echo 'eval "$(repair init zsh)"' >> ~/.zshrc
+
+   # Bash
+   echo 'eval "$(repair init bash)"' >> ~/.bashrc
+   ```
+
+3. **Restart your shell** or re-source your shell config:
+
+   ```bash
+   source ~/.zshrc
    ```
 
 4. **Run a command that errors**, then run:
@@ -86,7 +87,6 @@ Create `~/.config/repair/config.json`:
   "provider": "anthropic",
   "apiKey": "your-api-key",
   "model": "claude-3-5-sonnet-20241022",
-  "scrollbackLines": 100,
   "cacheEnabled": true,
   "cacheTTL": 86400000,
   "confirmBeforeSend": false
@@ -98,7 +98,6 @@ Create `~/.config/repair/config.json`:
 - `provider` (string): LLM provider to use
 - `apiKey` (string): API key for the provider
 - `model` (string, optional): Specific model to use
-- `scrollbackLines` (number): Lines of terminal output to analyze (default: 100, max: 1000)
 - `cacheEnabled` (boolean): Enable response caching (default: true)
 - `cacheTTL` (number): Cache time-to-live in milliseconds (default: 86400000 = 24 hours)
 - `confirmBeforeSend` (boolean): Prompt before sending data to LLM (default: false)
@@ -159,6 +158,7 @@ Note: Local models require an OpenAI-compatible API endpoint.
 
 ```bash
 repair [options]
+repair init <bash|zsh>
 ```
 
 **Options:**
@@ -169,6 +169,7 @@ repair [options]
 - `--confirm` - Display data before sending to LLM and wait for approval
 - `--verbose` - Enable verbose output for troubleshooting
 - `--debug` - Enable debug output
+- `init <shell>` - Print shell integration for a supported shell
 
 ## Usage Examples
 
@@ -214,13 +215,12 @@ Send this data to the LLM? (y/N): y
 
 ```bash
 $ repair --verbose
-Info: Running in Zellij session: main
-Info: Zellij version: 0.39.2
+Info: Captured command: npm start
+Info: Captured output length: 156 chars
+Info: Captured shell: zsh
+Info: Exit code: 1
 Info: Using provider: anthropic
 Info: Using model: claude-3-5-sonnet-20241022
-Info: Retrieving terminal output...
-Info: Command: npm start
-Info: Output length: 156 chars
 Info: Analyzing error with LLM...
 ```
 
@@ -248,18 +248,18 @@ repAIr caches LLM responses to reduce API costs and improve performance:
 
 - Cache location: `~/.cache/repair/` (or `$XDG_CACHE_HOME/repair/`)
 - Default TTL: 24 hours
-- Cache key: SHA-256 hash of command + output
+- Cache key: SHA-256 hash of command, output, and shell metadata
 - Bypass cache: Use `--no-cache` flag
 
 ## Troubleshooting
 
-### "This tool must be run inside a Zellij session"
+### "Shell integration is not configured"
 
-Make sure you're running the command inside Zellij:
+Install the shell hooks and restart your shell:
 
 ```bash
-zellij
-repair
+echo 'eval "$(repair init zsh)"' >> ~/.zshrc
+source ~/.zshrc
 ```
 
 ### "No API key configured"
@@ -272,12 +272,16 @@ export REPAIR_API_KEY=your-key-here
 
 Or create a config file at `~/.config/repair/config.json`.
 
-### "Failed to retrieve pane output from Zellij"
+### "No captured command output is available yet"
 
-Ensure you're using Zellij 0.38.0 or higher:
+Run a command first in the same configured shell session, then invoke `repair`.
+
+### "The captured session data is invalid"
+
+Capture a fresh command session or reinstall the shell hooks:
 
 ```bash
-zellij --version
+eval "$(repair init zsh)"
 ```
 
 ### API Rate Limiting
@@ -321,9 +325,9 @@ npm run format
 
 ## How It Works
 
-1. **Detection**: Checks if running inside Zellij session
-2. **Retrieval**: Uses `zellij action dump-screen` to get terminal output
-3. **Parsing**: Extracts last command and its output
+1. **Detection**: Checks whether shell integration is configured and a captured session is available
+2. **Capture**: Shell hooks record the command, output, exit code, and timestamp
+3. **Retrieval**: `repair` reads the latest session from the XDG state directory
 4. **Security**: Scans for and redacts potential secrets
 5. **Caching**: Checks cache for previous analysis
 6. **Analysis**: Sends to LLM with structured prompt
@@ -339,8 +343,9 @@ repair/
 │   ├── llm/           # LLM provider integrations
 │   ├── output/        # Output formatting
 │   ├── security/      # Secret detection and redaction
+│   │   ├── session/       # Captured shell session storage
+│   │   ├── shell-hooks/   # Shell integration snippet generation
 │   ├── types/         # TypeScript type definitions
-│   ├── zellij/        # Zellij integration
 │   ├── cli.ts         # CLI entry point
 │   └── index.ts       # Main orchestration
 ```
@@ -361,5 +366,4 @@ MIT
 
 ## Acknowledgments
 
-- Built for [Zellij](https://zellij.dev)
 - Powered by LLMs (OpenAI, Anthropic, Google, and more)
