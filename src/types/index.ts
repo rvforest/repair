@@ -27,6 +27,25 @@ export interface ShellContext {
   cwd?: string;
   shell?: string;
   exitCode?: number;
+  timestamp?: string;
+}
+
+export interface CapturedSession {
+  command: string;
+  output: string;
+  exitCode: number;
+  timestamp: string;
+  cwd?: string;
+  shell?: string;
+}
+
+export interface SessionWriteInput {
+  command: string;
+  output: string;
+  exitCode: number;
+  timestamp: string;
+  cwd?: string;
+  shell?: string;
 }
 
 export interface AnalysisResponse {
@@ -38,10 +57,4 @@ export interface AnalysisResponse {
 export interface CacheEntry {
   response: AnalysisResponse;
   timestamp: number;
-}
-
-export interface ZellijInfo {
-  inZellij: boolean;
-  sessionName?: string;
-  version?: string;
 }

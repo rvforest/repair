@@ -19,7 +19,8 @@
     "debugging",
     "llm",
     "terminal",
-    "zellij"
+    "shell",
+    "shell-hooks"
   ],
   "author": "",
   "license": "MIT",

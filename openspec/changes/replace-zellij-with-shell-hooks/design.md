@@ -7,7 +7,7 @@ The current implementation reads pane scrollback from Zellij and parses the last
 
 **Goals:**
 - Remove the Zellij runtime dependency entirely
-- Capture the last command session in a shell-agnostic storage format under the XDG state directory
+- Capture the most recent command session in a shell-agnostic storage format under the XDG state directory
 - Provide a guided setup flow through `repair init <shell>`
 - Keep the capture writer inside the TypeScript CLI so the shell snippets stay thin and do not depend on `jq`
 - Preserve the existing LLM analysis, redaction, caching, and output formatting pipeline
@@ -28,26 +28,11 @@ The current implementation reads pane scrollback from Zellij and parses the last
 - Users add `eval "$(repair init zsh)"` or `eval "$(repair init bash)"` to their shell config
 - Unsupported or partial-support shells should receive a clear error or limited-mode message instead of silent degradation
 
-### Decision: Persist the last session to XDG state
-**Why:** The CLI only needs the most recent command session. An XDG state file is portable, easy to inspect, and does not require a long-running daemon.
-
-**State path:**
-- `${XDG_STATE_HOME:-$HOME/.local/state}/repair/last-session.json`
-
-**Stored fields:**
-- `command`
-- `output`
-- `exitCode`
-- `timestamp`
-- optional `cwd`
-- optional `shell`
-
 ### Decision: Shell snippets call an internal CLI subcommand
 **Why:** Writing JSON in shell is awkward and would otherwise require external tools. Moving serialization into TypeScript keeps the snippets short and centralizes validation.
 
 **Internal commands:**
 - `repair _write-session --cmd ... --output ... --code ... --ts ...`
-- Optional helper commands such as `repair _clear-session` may be added if the implementation needs explicit cleanup
 
 ### Decision: Support robust output capture where shell hooks can guarantee it
 **Why:** Zsh and Bash can intercept pre-command and pre-prompt boundaries well enough for an MVP. Fish and Nushell have different hook semantics and should not be spec-required unless the implementation can guarantee equivalent output capture.
@@ -62,7 +47,7 @@ The current implementation reads pane scrollback from Zellij and parses the last
 **New runtime flow:**
 1. Load config
 2. Read the most recent captured shell session
-3. Error if shell integration is not installed or no command has been captured yet
+3. Error if shell integration is not installed or no captured session is currently available to analyze
 4. Redact secrets, consult cache, call LLM, and print formatted output
 
 ## Architecture
@@ -74,17 +59,19 @@ The current implementation reads pane scrollback from Zellij and parses the last
 └───────────┬───────────┘
             │ captures command, output, exit code
             v
-┌──────────────────────────────────────────┐
-│ repair _write-session                    │
-│ validates arguments and writes JSON      │
-│ to XDG state path                        │
-└───────────┬──────────────────────────────┘
-            │
-            v
+    ┌──────┴────────┐
+    │               │
+    v               v
+┌───────────────────────────────┐
+│ repair _write-session         │
+│ writes session JSON           │
+└───────────────┬───────────────┘
+                │
+                v
 ┌──────────────────────────────────────────┐
 │ repair CLI                               │
 │ 1. load config                           │
-│ 2. read last-session.json                │
+│ 2. read last-session.json if present     │
 │ 3. redact secrets / confirm / cache      │
 │ 4. send command + output to LLM          │
 │ 5. render explanation and fixes          │
@@ -95,9 +82,9 @@ The current implementation reads pane scrollback from Zellij and parses the last
 
 1. User runs a command in a configured shell
 2. The shell preexec hook records the command text and starts output capture
-3. The shell precmd hook restores terminal output, captures the exit code, and invokes `repair _write-session`
-4. `repair` stores structured session JSON in the state directory
-5. When the user runs `repair`, the CLI reads the JSON and builds the analysis request
+3. The shell precmd hook restores terminal output and captures the exit code
+4. The shell invokes `repair _write-session` and stores structured session JSON in the state directory
+5. When the user runs `repair`, the CLI reads the JSON and builds the analysis request if session data is available
 6. Existing security filtering, caching, and LLM provider code runs unchanged apart from richer shell metadata
 
 ## Risks / Trade-offs
@@ -118,7 +105,7 @@ The current implementation reads pane scrollback from Zellij and parses the last
 
 1. Remove Zellij-specific code paths and error messages
 2. Add shell integration generation and state file reader/writer modules
-3. Update docs and help text to instruct users to enable shell hooks
+3. Update docs and help text to instruct users to enable shell hooks and explain how shell capture works
 4. Replace the Zellij spec capability with shell hook requirements and mark the old capability removed
 
 ## Open Questions

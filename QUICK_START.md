@@ -4,17 +4,7 @@ Get up and running with repAIr in 5 minutes!
 
 ## Prerequisites
 
-1. Install Zellij (if not already installed):
-
-   ```bash
-   # macOS
-   brew install zellij
-
-   # Linux with cargo
-   cargo install zellij
-   ```
-
-2. Install Node.js 16+ (if not already installed):
+1. Install Node.js 16+ (if not already installed):
 
    ```bash
    # Check version
@@ -81,26 +71,36 @@ export REPAIR_LOCAL_URL=http://localhost:11434/v1
 
 ## Usage
 
-1. **Start Zellij**:
+1. **Install shell integration**:
 
    ```bash
-   zellij
+   # Zsh
+   echo 'eval "$(repair init zsh)"' >> ~/.zshrc
+
+   # Bash
+   echo 'eval "$(repair init bash)"' >> ~/.bashrc
    ```
 
-2. **Run a command that errors** (for example):
+2. **Reload your shell config**:
+
+   ```bash
+   source ~/.zshrc
+   ```
+
+3. **Run a command that errors** (for example):
 
    ```bash
    npm start
    # Error: Cannot find module 'express'
    ```
 
-3. **Analyze the error**:
+4. **Analyze the error**:
 
    ```bash
    repair
    ```
 
-4. **Get explanation and fixes**:
+5. **Get explanation and fixes**:
 
    ```
    ═══ Error Analysis ═══
@@ -148,32 +148,34 @@ Create `~/.config/repair/config.json` to avoid setting environment variables eac
   "provider": "anthropic",
   "apiKey": "your-api-key-here",
   "model": "claude-3-5-sonnet-20241022",
-  "scrollbackLines": 100,
   "cacheEnabled": true
 }
 ```
 
 ## Troubleshooting
 
-### "This tool must be run inside a Zellij session"
+### "Shell integration is not configured"
 
-Make sure you start Zellij first:
+Install and load the shell hooks first:
 
 ```bash
-zellij
-repair
+eval "$(repair init zsh)"
 ```
 
 ### "No API key configured"
 
 Set the REPAIR_API_KEY environment variable or create a config file.
 
-### "Failed to retrieve pane output"
+### "No captured command output is available yet"
 
-Ensure you're using Zellij 0.38.0 or higher:
+Run a command in the configured shell before calling `repair`.
+
+### "The captured session data is invalid"
+
+Refresh the hook setup and capture a new command:
 
 ```bash
-zellij --version
+eval "$(repair init zsh)"
 ```
 
 ## Next Steps
