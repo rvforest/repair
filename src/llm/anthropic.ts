@@ -7,7 +7,7 @@ export class AnthropicProvider extends LLMProvider {
 
   async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
     const model = this.model || this.defaultModel;
-    const baseURL = this.baseURL || 'https://api.anthropic.com/v1';
+    const baseURL = this.resolveBaseURL('https://api.anthropic.com/v1');
 
     const response = await fetch(`${baseURL}/messages`, {
       method: 'POST',
@@ -30,8 +30,7 @@ export class AnthropicProvider extends LLMProvider {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Anthropic API error: ${response.status} - ${error}`);
+      throw this.buildHttpError('Anthropic', response.status, response.statusText);
     }
 
     const data = await response.json() as any;

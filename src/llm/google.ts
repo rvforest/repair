@@ -7,17 +7,18 @@ export class GoogleProvider extends LLMProvider {
 
   async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
     const model = this.model || this.defaultModel;
-    const baseURL = this.baseURL || 'https://generativelanguage.googleapis.com/v1beta';
+    const baseURL = this.resolveBaseURL('https://generativelanguage.googleapis.com/v1beta');
 
     const systemPrompt = this.buildSystemPrompt();
     const userPrompt = this.buildUserPrompt(request);
 
     const response = await fetch(
-      `${baseURL}/models/${model}:generateContent?key=${this.apiKey}`,
+      `${baseURL}/models/${model}:generateContent`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-goog-api-key': this.apiKey,
         },
         body: JSON.stringify({
           contents: [
@@ -38,8 +39,7 @@ export class GoogleProvider extends LLMProvider {
     );
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Google API error: ${response.status} - ${error}`);
+      throw this.buildHttpError('Google', response.status, response.statusText);
     }
 
     const data = await response.json() as any;

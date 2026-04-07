@@ -7,7 +7,7 @@ export class OpenRouterProvider extends LLMProvider {
 
   async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
     const model = this.model || this.defaultModel;
-    const baseURL = this.baseURL || 'https://openrouter.ai/api/v1';
+    const baseURL = this.resolveBaseURL('https://openrouter.ai/api/v1');
 
     const response = await fetch(`${baseURL}/chat/completions`, {
       method: 'POST',
@@ -35,8 +35,7 @@ export class OpenRouterProvider extends LLMProvider {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`OpenRouter API error: ${response.status} - ${error}`);
+      throw this.buildHttpError('OpenRouter', response.status, response.statusText);
     }
 
     const data = await response.json() as any;
