@@ -20,6 +20,23 @@ export function generateShellInit(shell: string): string {
   return shell === 'zsh' ? generateZshInit() : generateBashInit();
 }
 
+function generateStartRedirectFn(): string {
+  return `  repair_start_redirect() {
+    exec {REPAIR_SAVED_STDOUT}>&1 {REPAIR_SAVED_STDERR}>&2
+    exec > >(tee -a "$REPAIR_LAST_OUTPUT_FILE" >&$REPAIR_SAVED_STDOUT) \\
+         2> >(tee -a "$REPAIR_LAST_OUTPUT_FILE" >&$REPAIR_SAVED_STDERR)
+    REPAIR_CAPTURE_ACTIVE=1
+  }`;
+}
+
+function generateRestoreRedirectFn(): string {
+  return `  repair_restore_redirect() {
+    exec 1>&$REPAIR_SAVED_STDOUT 2>&$REPAIR_SAVED_STDERR
+    exec {REPAIR_SAVED_STDOUT}>&- {REPAIR_SAVED_STDERR}>&-
+    REPAIR_CAPTURE_ACTIVE=0
+  }`;
+}
+
 function generateZshInit(): string {
   return `export REPAIR_SHELL_INTEGRATION=1
 if [[ -z "\${REPAIR_SHELL_HOOKS_LOADED:-}" ]]; then
@@ -36,6 +53,10 @@ if [[ -z "\${REPAIR_SHELL_HOOKS_LOADED:-}" ]]; then
     return 1
   }
 
+${generateStartRedirectFn()}
+
+${generateRestoreRedirectFn()}
+
   repair_preexec() {
     local cmd="$1"
     repair_should_skip "$cmd" && { REPAIR_CAPTURE_ACTIVE=0; return; }
@@ -44,10 +65,7 @@ if [[ -z "\${REPAIR_SHELL_HOOKS_LOADED:-}" ]]; then
     printf -v REPAIR_LAST_TIMESTAMP '%(%s)T' -1
     REPAIR_LAST_OUTPUT_FILE="$(mktemp "\${TMPDIR:-/tmp}/repair-session.XXXXXX")"
 
-    exec {REPAIR_SAVED_STDOUT}>&1 {REPAIR_SAVED_STDERR}>&2
-    exec > >(tee -a "$REPAIR_LAST_OUTPUT_FILE" >&$REPAIR_SAVED_STDOUT) \
-         2> >(tee -a "$REPAIR_LAST_OUTPUT_FILE" >&$REPAIR_SAVED_STDERR)
-    REPAIR_CAPTURE_ACTIVE=1
+    repair_start_redirect
   }
 
   repair_precmd() {
@@ -57,9 +75,7 @@ if [[ -z "\${REPAIR_SHELL_HOOKS_LOADED:-}" ]]; then
       return $exit_code
     fi
 
-    exec 1>&$REPAIR_SAVED_STDOUT 2>&$REPAIR_SAVED_STDERR
-    exec {REPAIR_SAVED_STDOUT}>&- {REPAIR_SAVED_STDERR}>&-
-    REPAIR_CAPTURE_ACTIVE=0
+    repair_restore_redirect
 
     command repair _write-session \
       --cmd "$REPAIR_LAST_COMMAND" \
@@ -97,6 +113,10 @@ if [[ -z "\${REPAIR_SHELL_HOOKS_LOADED:-}" ]]; then
     return 1
   }
 
+${generateStartRedirectFn()}
+
+${generateRestoreRedirectFn()}
+
   repair_debug_trap() {
     [[ "\${REPAIR_CAPTURE_ACTIVE:-0}" -eq 1 ]] && return
     [[ -n "\${COMP_LINE-}" ]] && return
@@ -112,19 +132,14 @@ if [[ -z "\${REPAIR_SHELL_HOOKS_LOADED:-}" ]]; then
     printf -v REPAIR_LAST_TIMESTAMP '%(%s)T' -1
     REPAIR_LAST_OUTPUT_FILE="$(mktemp "\${TMPDIR:-/tmp}/repair-session.XXXXXX")"
 
-    exec {REPAIR_SAVED_STDOUT}>&1 {REPAIR_SAVED_STDERR}>&2
-    exec > >(tee -a "$REPAIR_LAST_OUTPUT_FILE" >&$REPAIR_SAVED_STDOUT) \
-         2> >(tee -a "$REPAIR_LAST_OUTPUT_FILE" >&$REPAIR_SAVED_STDERR)
-    REPAIR_CAPTURE_ACTIVE=1
+    repair_start_redirect
   }
 
   repair_prompt_command() {
     local exit_code=$?
 
     if [[ "\${REPAIR_CAPTURE_ACTIVE:-0}" -eq 1 ]]; then
-      exec 1>&$REPAIR_SAVED_STDOUT 2>&$REPAIR_SAVED_STDERR
-      exec {REPAIR_SAVED_STDOUT}>&- {REPAIR_SAVED_STDERR}>&-
-      REPAIR_CAPTURE_ACTIVE=0
+      repair_restore_redirect
 
       command repair _write-session \
         --cmd "$REPAIR_LAST_COMMAND" \
