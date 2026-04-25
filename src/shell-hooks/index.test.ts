@@ -14,6 +14,7 @@ describe('shell hook generation', () => {
     expect(snippet).toContain('REPAIR_SHELL_INTEGRATION=1');
     expect(snippet).toContain('repair_start_redirect');
     expect(snippet).toContain('repair_restore_redirect');
+    expect(snippet).toContain('} always {');
   });
 
   it('generates a bash snippet with DEBUG and PROMPT_COMMAND hooks', () => {
@@ -24,6 +25,7 @@ describe('shell hook generation', () => {
     expect(snippet).toContain('repair _write-session');
     expect(snippet).toContain('repair_start_redirect');
     expect(snippet).toContain('repair_restore_redirect');
+    expect(snippet).toContain('local _output_file=');
   });
 
   it('rejects unsupported shells with guidance', () => {

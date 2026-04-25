@@ -75,18 +75,21 @@ ${generateRestoreRedirectFn()}
       return $exit_code
     fi
 
-    repair_restore_redirect
+    {
+      repair_restore_redirect
 
-    command repair _write-session \
-      --cmd "$REPAIR_LAST_COMMAND" \
-      --output-file "$REPAIR_LAST_OUTPUT_FILE" \
-      --code "$exit_code" \
-      --ts "$REPAIR_LAST_TIMESTAMP" \
-      --cwd "$PWD" \
-      --shell "zsh" >/dev/null 2>&1 || true
+      command repair _write-session \
+        --cmd "$REPAIR_LAST_COMMAND" \
+        --output-file "$REPAIR_LAST_OUTPUT_FILE" \
+        --code "$exit_code" \
+        --ts "$REPAIR_LAST_TIMESTAMP" \
+        --cwd "$PWD" \
+        --shell "zsh" >/dev/null 2>&1 || true
+    } always {
+      rm -f "$REPAIR_LAST_OUTPUT_FILE"
+      unset REPAIR_LAST_OUTPUT_FILE
+    }
 
-    rm -f "$REPAIR_LAST_OUTPUT_FILE"
-    unset REPAIR_LAST_OUTPUT_FILE
     return $exit_code
   }
 
@@ -139,18 +142,20 @@ ${generateRestoreRedirectFn()}
     local exit_code=$?
 
     if [[ "\${REPAIR_CAPTURE_ACTIVE:-0}" -eq 1 ]]; then
+      local _output_file="$REPAIR_LAST_OUTPUT_FILE"
+      REPAIR_LAST_OUTPUT_FILE=""
+
       repair_restore_redirect
 
       command repair _write-session \
         --cmd "$REPAIR_LAST_COMMAND" \
-        --output-file "$REPAIR_LAST_OUTPUT_FILE" \
+        --output-file "$_output_file" \
         --code "$exit_code" \
         --ts "$REPAIR_LAST_TIMESTAMP" \
         --cwd "$PWD" \
         --shell "bash" >/dev/null 2>&1 || true
 
-      rm -f "$REPAIR_LAST_OUTPUT_FILE"
-      REPAIR_LAST_OUTPUT_FILE=""
+      rm -f "$_output_file"
     fi
 
     if [[ -n "\${REPAIR_PREVIOUS_PROMPT_COMMAND:-}" ]]; then
