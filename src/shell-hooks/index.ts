@@ -77,7 +77,7 @@ ${generateRestoreRedirectFn()}
     repair_should_skip "$cmd" && { REPAIR_CAPTURE_ACTIVE=0; return; }
 
     REPAIR_LAST_COMMAND="$cmd"
-    printf -v REPAIR_LAST_TIMESTAMP '%(%s)T' -1
+    REPAIR_LAST_TIMESTAMP=$(print -P '%D{%s}')
     REPAIR_LAST_OUTPUT_FILE="$(mktemp "\${TMPDIR:-/tmp}/repair-session.XXXXXX")"
 
     repair_start_redirect
