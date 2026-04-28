@@ -63,7 +63,7 @@ if [[ -z "\${REPAIR_SHELL_HOOKS_LOADED:-}" ]]; then
 
   repair_should_skip() {
     case "$1" in
-      repair|repair\ *|command\ repair|command\ repair\ *) return 0 ;;
+      "repair" | "repair "* | "command repair" | "command repair *") return 0 ;;
     esac
     return 1
   }
@@ -126,7 +126,7 @@ if [[ -z "\${REPAIR_SHELL_HOOKS_LOADED:-}" ]]; then
 
   repair_should_skip() {
     case "$1" in
-      repair|repair\ *|command\ repair|command\ repair\ *|repair_prompt_command|repair_debug_trap) return 0 ;;
+      "repair" | "repair "* | "command repair" | "command repair "* | "repair_prompt_command" | "repair_debug_trap") return 0 ;;
     esac
     return 1
   }
