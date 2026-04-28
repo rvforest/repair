@@ -3,7 +3,7 @@ import { AnalysisRequest, AnalysisResponse } from '../types';
 import { LLMProvider } from './base';
 
 export class OpenAIProvider extends LLMProvider {
-  private defaultModel = 'gpt-4-turbo-preview';
+  private defaultModel = 'gpt-5.4-mini';
 
   async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
     const model = this.model || this.defaultModel;

@@ -3,7 +3,7 @@ import { AnalysisRequest, AnalysisResponse } from '../types';
 import { LLMProvider } from './base';
 
 export class GoogleProvider extends LLMProvider {
-  private defaultModel = 'gemini-1.5-pro';
+  private defaultModel = 'gemini-2.5-flash-lite';
 
   async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
     const model = this.model || this.defaultModel;

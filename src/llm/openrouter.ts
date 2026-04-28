@@ -3,7 +3,7 @@ import { AnalysisRequest, AnalysisResponse } from '../types';
 import { LLMProvider } from './base';
 
 export class OpenRouterProvider extends LLMProvider {
-  private defaultModel = 'anthropic/claude-3.5-sonnet';
+  private defaultModel = 'anthropic/claude-haiku-4-5-20251001';
 
   async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
     const model = this.model || this.defaultModel;

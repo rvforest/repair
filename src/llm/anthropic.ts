@@ -3,7 +3,7 @@ import { AnalysisRequest, AnalysisResponse } from '../types';
 import { LLMProvider } from './base';
 
 export class AnthropicProvider extends LLMProvider {
-  private defaultModel = 'claude-3-5-sonnet-20241022';
+  private defaultModel = 'claude-haiku-4-5-20251001';
 
   async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
     const model = this.model || this.defaultModel;
