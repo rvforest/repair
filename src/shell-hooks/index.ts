@@ -23,8 +23,16 @@ export function generateShellInit(shell: string): string {
 function generateStartRedirectFn(): string {
   return `  repair_start_redirect() {
     exec {REPAIR_SAVED_STDOUT}>&1 {REPAIR_SAVED_STDERR}>&2
-    exec > >(tee -a "$REPAIR_LAST_OUTPUT_FILE" >&$REPAIR_SAVED_STDOUT) \\
-         2> >(tee -a "$REPAIR_LAST_OUTPUT_FILE" >&$REPAIR_SAVED_STDERR)
+    REPAIR_STDOUT_FIFO="$(mktemp -u "\${TMPDIR:-/tmp}/repair-stdout.XXXXXX")"
+    REPAIR_STDERR_FIFO="$(mktemp -u "\${TMPDIR:-/tmp}/repair-stderr.XXXXXX")"
+    mkfifo "$REPAIR_STDOUT_FIFO" "$REPAIR_STDERR_FIFO"
+    tee -a "$REPAIR_LAST_OUTPUT_FILE" <"$REPAIR_STDOUT_FIFO" >&$REPAIR_SAVED_STDOUT &
+    REPAIR_STDOUT_TEE_PID=$!
+    tee -a "$REPAIR_LAST_OUTPUT_FILE" <"$REPAIR_STDERR_FIFO" >&$REPAIR_SAVED_STDERR &
+    REPAIR_STDERR_TEE_PID=$!
+    exec {REPAIR_STDOUT_FD}>"$REPAIR_STDOUT_FIFO" {REPAIR_STDERR_FD}>"$REPAIR_STDERR_FIFO"
+    rm -f "$REPAIR_STDOUT_FIFO" "$REPAIR_STDERR_FIFO"
+    exec >&$REPAIR_STDOUT_FD 2>&$REPAIR_STDERR_FD
     REPAIR_CAPTURE_ACTIVE=1
   }`;
 }
@@ -32,7 +40,11 @@ function generateStartRedirectFn(): string {
 function generateRestoreRedirectFn(): string {
   return `  repair_restore_redirect() {
     exec 1>&$REPAIR_SAVED_STDOUT 2>&$REPAIR_SAVED_STDERR
+    exec {REPAIR_STDOUT_FD}>&- {REPAIR_STDERR_FD}>&-
+    wait "$REPAIR_STDOUT_TEE_PID" "$REPAIR_STDERR_TEE_PID" 2>/dev/null || true
     exec {REPAIR_SAVED_STDOUT}>&- {REPAIR_SAVED_STDERR}>&-
+    unset REPAIR_STDOUT_FIFO REPAIR_STDERR_FIFO REPAIR_STDOUT_TEE_PID REPAIR_STDERR_TEE_PID
+    unset REPAIR_STDOUT_FD REPAIR_STDERR_FD
     REPAIR_CAPTURE_ACTIVE=0
   }`;
 }
