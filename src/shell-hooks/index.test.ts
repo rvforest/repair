@@ -5,6 +5,9 @@ import { spawnSync } from 'child_process';
 import { describe, expect, it } from 'vitest';
 import { generateShellInit, getSupportedShells } from './index';
 
+const EXPECTED_CAPTURED_OUTPUT = 'captured output';
+const SLOW_TEE_DELAY_SECS = 0.2;
+
 function extractFunction(snippet: string, name: string): string {
   const match = snippet.match(new RegExp(`  ${name}\\(\\) \\{[\\s\\S]*?\\n  \\}`, 'm'));
 
@@ -48,9 +51,10 @@ describe('shell hook generation', () => {
     const teePath = path.join(tempDir, 'tee');
     const capturePath = path.join(tempDir, 'capture.log');
 
-    fs.writeFileSync(
-      teePath,
-      `#!/usr/bin/env bash
+    try {
+      fs.writeFileSync(
+        teePath,
+        `#!/usr/bin/env bash
 set -euo pipefail
 if [[ "$1" == "-a" ]]; then
   file="$2"
@@ -59,44 +63,49 @@ else
   file=""
 fi
 payload="$(cat)"
-sleep 0.2
+sleep ${SLOW_TEE_DELAY_SECS}
 if [[ -n "$file" ]]; then
   printf '%s' "$payload" >> "$file"
 fi
 printf '%s' "$payload"
 `,
-      { mode: 0o755 },
-    );
+        { mode: 0o755 },
+      );
 
-    const result = spawnSync(
-      'bash',
-      [
-        '-lc',
-        `set -euo pipefail
+      const result = spawnSync(
+        'bash',
+        [
+          '-lc',
+          `set -euo pipefail
 ${extractFunction(snippet, 'repair_start_redirect')}
 
 ${extractFunction(snippet, 'repair_restore_redirect')}
 
+exec 3>&1
+exec >/dev/null
 REPAIR_LAST_OUTPUT_FILE=${JSON.stringify(capturePath)}
 repair_start_redirect
-printf 'captured output'
+printf ${JSON.stringify(EXPECTED_CAPTURED_OUTPUT)}
 repair_restore_redirect
+exec >&3
+exec 3>&-
 wc -c < ${JSON.stringify(capturePath)}
 `,
-      ],
-      {
-        env: {
-          ...process.env,
-          PATH: `${tempDir}:${process.env.PATH || ''}`,
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${tempDir}:${process.env.PATH || ''}`,
+          },
+          encoding: 'utf-8',
         },
-        encoding: 'utf-8',
-      },
-    );
+      );
 
-    fs.rmSync(tempDir, { recursive: true, force: true });
-
-    expect(result.status).toBe(0);
-    expect(result.stdout.match(/(\d+)\s*$/)?.[1]).toBe('15');
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe(String(Buffer.byteLength(EXPECTED_CAPTURED_OUTPUT)));
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it('rejects unsupported shells with guidance', () => {
