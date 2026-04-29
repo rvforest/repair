@@ -1,10 +1,11 @@
 import { ConfigManager } from './config';
-import { ZellijIntegration } from './zellij';
 import { createLLMProvider } from './llm';
 import { SecurityFilter } from './security';
 import { CacheManager } from './cache';
 import { OutputFormatter } from './output';
-import { Config } from './types';
+import { markErrorAsDisplayed } from './errors';
+import { isShellIntegrationConfigured, SessionError, SessionStore } from './session';
+import { AnalysisRequest, AnalysisResponse, Config } from './types';
 
 interface MainOptions {
   cacheEnabled?: boolean;
@@ -12,53 +13,71 @@ interface MainOptions {
   verbose?: boolean;
 }
 
-export async function main(options: MainOptions = {}): Promise<void> {
-  const formatter = new OutputFormatter();
+interface MainDependencies {
+  configManager?: Pick<ConfigManager, 'load' | 'validate'>;
+  sessionStore?: Pick<SessionStore, 'read' | 'toAnalysisRequest'>;
+  securityFilter?: Pick<SecurityFilter, 'detectSecrets' | 'redactSecrets' | 'confirmSend'>;
+  cacheFactory?: (ttl: number) => {
+    get(request: AnalysisRequest): Promise<AnalysisResponse | null>;
+    set(request: AnalysisRequest, response: AnalysisResponse): Promise<void>;
+  };
+  llmProviderFactory?: typeof createLLMProvider;
+  formatter?: OutputFormatter;
+}
+
+export async function main(
+  options: MainOptions = {},
+  dependencies: MainDependencies = {},
+): Promise<void> {
+  const formatter = dependencies.formatter || new OutputFormatter();
 
   try {
-    // Initialize components
-    const configManager = new ConfigManager();
-    const zellijIntegration = new ZellijIntegration();
-    const securityFilter = new SecurityFilter();
+    const configManager = dependencies.configManager || new ConfigManager();
+    const sessionStore = dependencies.sessionStore || new SessionStore();
+    const securityFilter = dependencies.securityFilter || new SecurityFilter();
+    const createCache = dependencies.cacheFactory || ((ttl: number) => new CacheManager(ttl));
+    const llmProviderFactory = dependencies.llmProviderFactory || createLLMProvider;
 
-    // Step 1: Check if we're in Zellij
-    const zellijInfo = await zellijIntegration.detectZellij();
+    let analysisRequest: AnalysisRequest;
 
-    if (!zellijInfo.inZellij) {
-      const isInstalled = await zellijIntegration.checkZellijInstalled();
+    try {
+      const session = await sessionStore.read();
+      analysisRequest = sessionStore.toAnalysisRequest(session);
+    } catch (error) {
+      const sessionErrorCode = getSessionErrorCode(error);
 
-      if (!isInstalled) {
+      if (sessionErrorCode === 'missing') {
+        if (isShellIntegrationConfigured()) {
+          throw new Error(
+            'No captured command output is available yet. Run a command in this shell, then run repair again.',
+          );
+        }
+
         throw new Error(
-          'Zellij is not installed. Please install Zellij to use this tool.\n' +
-          'Visit: https://zellij.dev/documentation/installation'
+          'Shell integration is not configured. Add eval "$(repair init zsh)" or eval "$(repair init bash)" to your shell configuration, then restart your shell.',
         );
       }
 
-      throw new Error(
-        'This tool must be run inside a Zellij session.\n' +
-        'Start Zellij with: zellij\n' +
-        'Then run this command again.'
-      );
+      if (sessionErrorCode === 'invalid') {
+        throw new Error(
+          'The captured session data is invalid. Run another command, or reinstall shell integration with repair init <shell>.',
+        );
+      }
+
+      throw error;
     }
 
     if (options.verbose) {
-      console.log(formatter.formatInfo(`Running in Zellij session: ${zellijInfo.sessionName}`));
-      if (zellijInfo.version) {
-        console.log(formatter.formatInfo(`Zellij version: ${zellijInfo.version}`));
+      console.log(formatter.formatInfo(`Captured command: ${analysisRequest.command}`));
+      console.log(formatter.formatInfo(`Captured output length: ${analysisRequest.output.length} chars`));
+      if (analysisRequest.shellContext?.shell) {
+        console.log(formatter.formatInfo(`Captured shell: ${analysisRequest.shellContext.shell}`));
+      }
+      if (analysisRequest.shellContext?.exitCode !== undefined) {
+        console.log(formatter.formatInfo(`Exit code: ${analysisRequest.shellContext.exitCode}`));
       }
     }
 
-    // Step 2: Check Zellij version
-    const versionOk = await zellijIntegration.checkVersion('0.38.0');
-    if (!versionOk) {
-      console.log(
-        formatter.formatWarning(
-          'Zellij version may be incompatible. Recommended version: 0.38.0 or higher'
-        )
-      );
-    }
-
-    // Step 3: Load configuration
     const config = await configManager.load();
 
     // Allow options to override config
@@ -77,27 +96,13 @@ export async function main(options: MainOptions = {}): Promise<void> {
       }
     }
 
-    // Step 4: Get pane output and extract command
-    if (options.verbose) {
-      console.log(formatter.formatInfo('Retrieving terminal output...'));
-    }
-
-    const analysisRequest = await zellijIntegration.buildAnalysisRequest(
-      effectiveConfig.scrollbackLines
-    );
-
     if (!analysisRequest.command || !analysisRequest.output) {
-      throw new Error('Could not extract command and output from terminal');
+      throw new Error('Could not load captured command and output from shell session');
     }
 
-    if (options.verbose) {
-      console.log(formatter.formatInfo(`Command: ${analysisRequest.command}`));
-      console.log(formatter.formatInfo(`Output length: ${analysisRequest.output.length} chars`));
-    }
-
-    // Step 5: Security check
+    const shellContextString = JSON.stringify(analysisRequest.shellContext || {});
     const hasSecrets = securityFilter.detectSecrets(
-      analysisRequest.command + '\n' + analysisRequest.output
+      analysisRequest.command + '\n' + analysisRequest.output + '\n' + shellContextString
     );
 
     if (hasSecrets) {
@@ -106,9 +111,14 @@ export async function main(options: MainOptions = {}): Promise<void> {
       );
       analysisRequest.command = securityFilter.redactSecrets(analysisRequest.command);
       analysisRequest.output = securityFilter.redactSecrets(analysisRequest.output);
+      if (analysisRequest.shellContext?.cwd) {
+        analysisRequest.shellContext.cwd = securityFilter.redactSecrets(analysisRequest.shellContext.cwd);
+      }
+      if (analysisRequest.shellContext?.shell) {
+        analysisRequest.shellContext.shell = securityFilter.redactSecrets(analysisRequest.shellContext.shell);
+      }
     }
 
-    // Step 6: Confirmation if requested
     if (effectiveConfig.confirmBeforeSend) {
       const confirmed = await securityFilter.confirmSend(
         analysisRequest.command,
@@ -121,13 +131,17 @@ export async function main(options: MainOptions = {}): Promise<void> {
       }
     }
 
-    // Step 7: Check cache
     let response;
-    let cacheManager: CacheManager | undefined;
+    let cacheManager:
+      | {
+          get(request: AnalysisRequest): Promise<AnalysisResponse | null>;
+          set(request: AnalysisRequest, response: AnalysisResponse): Promise<void>;
+        }
+      | undefined;
 
     if (effectiveConfig.cacheEnabled) {
-      cacheManager = new CacheManager(effectiveConfig.cacheTTL);
-      response = await cacheManager.get(analysisRequest.command, analysisRequest.output);
+      cacheManager = createCache(effectiveConfig.cacheTTL || 24 * 60 * 60 * 1000);
+      response = await cacheManager.get(analysisRequest);
 
       if (response) {
         if (options.verbose) {
@@ -138,20 +152,17 @@ export async function main(options: MainOptions = {}): Promise<void> {
       }
     }
 
-    // Step 8: Call LLM
     if (options.verbose) {
       console.log(formatter.formatInfo('Analyzing error with LLM...'));
     }
 
-    const llmProvider = createLLMProvider(effectiveConfig);
+    const llmProvider = llmProviderFactory(effectiveConfig);
     response = await llmProvider.analyze(analysisRequest);
 
-    // Step 9: Cache the response
     if (effectiveConfig.cacheEnabled && cacheManager) {
-      await cacheManager.set(analysisRequest.command, analysisRequest.output, response);
+      await cacheManager.set(analysisRequest, response);
     }
 
-    // Step 10: Display results
     console.log('\n' + formatter.formatResponse(response));
 
   } catch (error) {
@@ -171,8 +182,25 @@ export async function main(options: MainOptions = {}): Promise<void> {
       if (error.message.includes('network') || error.message.includes('timeout')) {
         console.error('\n' + formatter.formatInfo('Check your internet connection'));
       }
+
+      markErrorAsDisplayed(error);
     }
 
     throw error;
   }
+}
+
+function getSessionErrorCode(error: unknown): 'missing' | 'invalid' | undefined {
+  if (error instanceof SessionError) {
+    return error.code;
+  }
+
+  if (error && typeof error === 'object' && 'code' in error) {
+    const code = (error as { code?: unknown }).code;
+    if (code === 'missing' || code === 'invalid') {
+      return code;
+    }
+  }
+
+  return undefined;
 }
