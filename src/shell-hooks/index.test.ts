@@ -108,6 +108,13 @@ wc -c < ${JSON.stringify(capturePath)}
     }
   });
 
+  it('adds zsh monitor suppression around tee helpers', () => {
+    const snippet = generateShellInit('zsh');
+
+    expect(snippet).toContain('setopt localoptions nomonitor');
+    expect(snippet.match(/setopt localoptions nomonitor/g)).toHaveLength(2);
+  });
+
   it('rejects unsupported shells with guidance', () => {
     expect(() => generateShellInit('fish')).toThrow('Supported shells: bash, zsh');
   });

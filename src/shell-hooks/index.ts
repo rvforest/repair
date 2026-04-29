@@ -20,28 +20,42 @@ export function generateShellInit(shell: string): string {
   return shell === 'zsh' ? generateZshInit() : generateBashInit();
 }
 
-function generateStartRedirectFn(): string {
+function generateStartRedirectFn(shell: SupportedShell): string {
+  const startTees =
+    shell === 'zsh'
+      ? `    setopt localoptions nomonitor
+    tee -a "$REPAIR_LAST_OUTPUT_FILE" <"$REPAIR_STDOUT_FIFO" >&$REPAIR_SAVED_STDOUT &
+    REPAIR_STDOUT_TEE_PID=$!
+    tee -a "$REPAIR_LAST_OUTPUT_FILE" <"$REPAIR_STDERR_FIFO" >&$REPAIR_SAVED_STDERR &
+    REPAIR_STDERR_TEE_PID=$!`
+      : `    tee -a "$REPAIR_LAST_OUTPUT_FILE" <"$REPAIR_STDOUT_FIFO" >&$REPAIR_SAVED_STDOUT &
+    REPAIR_STDOUT_TEE_PID=$!
+    tee -a "$REPAIR_LAST_OUTPUT_FILE" <"$REPAIR_STDERR_FIFO" >&$REPAIR_SAVED_STDERR &
+    REPAIR_STDERR_TEE_PID=$!`;
+
   return `  repair_start_redirect() {
     exec {REPAIR_SAVED_STDOUT}>&1 {REPAIR_SAVED_STDERR}>&2
     REPAIR_REDIRECT_DIR="$(mktemp -d "\${TMPDIR:-/tmp}/repair-redirect.XXXXXX")"
     REPAIR_STDOUT_FIFO="$REPAIR_REDIRECT_DIR/stdout"
     REPAIR_STDERR_FIFO="$REPAIR_REDIRECT_DIR/stderr"
     mkfifo "$REPAIR_STDOUT_FIFO" "$REPAIR_STDERR_FIFO"
-    tee -a "$REPAIR_LAST_OUTPUT_FILE" <"$REPAIR_STDOUT_FIFO" >&$REPAIR_SAVED_STDOUT &
-    REPAIR_STDOUT_TEE_PID=$!
-    tee -a "$REPAIR_LAST_OUTPUT_FILE" <"$REPAIR_STDERR_FIFO" >&$REPAIR_SAVED_STDERR &
-    REPAIR_STDERR_TEE_PID=$!
+${startTees}
     exec {REPAIR_STDOUT_FD}>"$REPAIR_STDOUT_FIFO" {REPAIR_STDERR_FD}>"$REPAIR_STDERR_FIFO"
     exec >&$REPAIR_STDOUT_FD 2>&$REPAIR_STDERR_FD
     REPAIR_CAPTURE_ACTIVE=1
   }`;
 }
 
-function generateRestoreRedirectFn(): string {
+function generateRestoreRedirectFn(shell: SupportedShell): string {
+  const waitForTees =
+    shell === 'zsh'
+      ? '    setopt localoptions nomonitor\n    wait "$REPAIR_STDOUT_TEE_PID" "$REPAIR_STDERR_TEE_PID" 2>/dev/null || true'
+      : '    wait "$REPAIR_STDOUT_TEE_PID" "$REPAIR_STDERR_TEE_PID" 2>/dev/null || true';
+
   return `  repair_restore_redirect() {
     exec 1>&$REPAIR_SAVED_STDOUT 2>&$REPAIR_SAVED_STDERR
     exec {REPAIR_STDOUT_FD}>&- {REPAIR_STDERR_FD}>&-
-    wait "$REPAIR_STDOUT_TEE_PID" "$REPAIR_STDERR_TEE_PID" 2>/dev/null || true
+${waitForTees}
     rm -f "$REPAIR_STDOUT_FIFO" "$REPAIR_STDERR_FIFO"
     rmdir "$REPAIR_REDIRECT_DIR" 2>/dev/null || true
     exec {REPAIR_SAVED_STDOUT}>&- {REPAIR_SAVED_STDERR}>&-
@@ -68,9 +82,9 @@ if [[ -z "\${REPAIR_SHELL_HOOKS_LOADED:-}" ]]; then
     return 1
   }
 
-${generateStartRedirectFn()}
+${generateStartRedirectFn('zsh')}
 
-${generateRestoreRedirectFn()}
+${generateRestoreRedirectFn('zsh')}
 
   repair_preexec() {
     local cmd="$1"
@@ -131,9 +145,9 @@ if [[ -z "\${REPAIR_SHELL_HOOKS_LOADED:-}" ]]; then
     return 1
   }
 
-${generateStartRedirectFn()}
+${generateStartRedirectFn('bash')}
 
-${generateRestoreRedirectFn()}
+${generateRestoreRedirectFn('bash')}
 
   repair_debug_trap() {
     [[ "\${REPAIR_CAPTURE_ACTIVE:-0}" -eq 1 ]] && return
