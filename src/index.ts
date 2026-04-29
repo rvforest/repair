@@ -3,6 +3,7 @@ import { createLLMProvider } from './llm';
 import { SecurityFilter } from './security';
 import { CacheManager } from './cache';
 import { OutputFormatter } from './output';
+import { markErrorAsDisplayed } from './errors';
 import { isShellIntegrationConfigured, SessionError, SessionStore } from './session';
 import { AnalysisRequest, AnalysisResponse, Config } from './types';
 
@@ -181,6 +182,8 @@ export async function main(
       if (error.message.includes('network') || error.message.includes('timeout')) {
         console.error('\n' + formatter.formatInfo('Check your internet connection'));
       }
+
+      markErrorAsDisplayed(error);
     }
 
     throw error;

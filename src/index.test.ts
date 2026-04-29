@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { wasErrorDisplayed } from './errors';
 import { main } from './index';
 import { AnalysisRequest, AnalysisResponse, Config } from './types';
 
@@ -18,16 +19,23 @@ describe('main shell-session flow', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const missingSessionError = { name: 'SessionError', code: 'missing', message: 'missing' };
 
-    await expect(
-      main({}, {
+    let thrownError: Error | undefined;
+
+    try {
+      await main({}, {
         sessionStore: {
           read: vi.fn().mockRejectedValue(missingSessionError),
           toAnalysisRequest: vi.fn(),
         } as any,
-      }),
-    ).rejects.toThrow('Shell integration is not configured');
+      });
+    } catch (error) {
+      thrownError = error as Error;
+    }
 
+    expect(thrownError).toBeInstanceOf(Error);
+    expect(thrownError?.message).toContain('Shell integration is not configured');
     expect(errorSpy).toHaveBeenCalled();
+    expect(thrownError && wasErrorDisplayed(thrownError)).toBe(true);
   });
 
   it('shows no-command guidance when integration is loaded but no session exists', async () => {

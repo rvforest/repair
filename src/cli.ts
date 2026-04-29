@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { wasErrorDisplayed } from './errors';
 import { main } from './index';
 import { generateShellInit } from './shell-hooks';
 import { normalizeTimestamp, SessionStore } from './session';
@@ -25,7 +26,9 @@ program
       });
     } catch (error) {
       if (error instanceof Error) {
-        console.error(`Error: ${error.message}`);
+        if (!wasErrorDisplayed(error)) {
+          console.error(`Error: ${error.message}`);
+        }
         if (options.verbose || options.debug) {
           console.error(error.stack);
         }
