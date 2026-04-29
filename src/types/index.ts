@@ -7,6 +7,9 @@ export interface Config {
   cacheEnabled?: boolean;
   cacheTTL?: number;
   confirmBeforeSend?: boolean;
+  includeCwd?: boolean;
+  maxCaptureBytes?: number;
+  maxPersistedOutputBytes?: number;
 }
 
 export type LLMProvider = 'openai' | 'anthropic' | 'google' | 'openrouter' | 'local';
@@ -30,13 +33,15 @@ export interface ShellContext {
   timestamp?: string;
 }
 
-export interface CapturedSession {
+export interface SanitizedSessionBundle {
   command: string;
   output: string;
   exitCode: number;
   timestamp: string;
   cwd?: string;
   shell?: string;
+  truncated: boolean;
+  redactionsApplied: number;
 }
 
 export interface SessionWriteInput {
@@ -46,6 +51,12 @@ export interface SessionWriteInput {
   timestamp: string;
   cwd?: string;
   shell?: string;
+}
+
+export interface SanitizedResponseMetadata {
+  explanation: string;
+  fixes: string[];
+  additionalContext?: string;
 }
 
 export interface AnalysisResponse {

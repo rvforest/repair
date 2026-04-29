@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { wasErrorDisplayed } from './errors';
 import { main } from './index';
-import { AnalysisRequest, AnalysisResponse, Config } from './types';
+import { AnalysisRequest, AnalysisResponse, Config, SanitizedSessionBundle } from './types';
 
 describe('main shell-session flow', () => {
   const originalEnv = { ...process.env };
@@ -56,14 +56,98 @@ describe('main shell-session flow', () => {
     expect(errorSpy).toHaveBeenCalled();
   });
 
+  it('reports when the most recent command succeeded and no failed session remains', async () => {
+    process.env.REPAIR_SHELL_INTEGRATION = '1';
+    process.env.REPAIR_LAST_CAPTURE_STATUS = 'success';
+
+    await expect(
+      main({}, {
+        sessionStore: {
+          read: vi.fn().mockRejectedValue({ code: 'missing' }),
+          toAnalysisRequest: vi.fn(),
+        } as any,
+      }),
+    ).rejects.toThrow('No failed command is currently available for analysis');
+  });
+
+  it('reports when a sensitive command was skipped', async () => {
+    process.env.REPAIR_SHELL_INTEGRATION = '1';
+    process.env.REPAIR_LAST_CAPTURE_STATUS = 'skipped:sudo';
+
+    await expect(
+      main({}, {
+        sessionStore: {
+          read: vi.fn().mockRejectedValue({ code: 'missing' }),
+          toAnalysisRequest: vi.fn(),
+        } as any,
+      }),
+    ).rejects.toThrow('excluded from capture by default');
+  });
+
+  it('prefers an existing capturable failure over a newer skipped sensitive command', async () => {
+    process.env.REPAIR_SHELL_INTEGRATION = '1';
+    process.env.REPAIR_LAST_CAPTURE_STATUS = 'skipped:sudo';
+
+    const sanitizedBundle: SanitizedSessionBundle = {
+      command: 'npm test',
+      output: 'Error: boom',
+      exitCode: 1,
+      timestamp: '2026-04-01T12:00:00.000Z',
+      shell: 'zsh',
+      truncated: false,
+      redactionsApplied: 0,
+    };
+
+    const analyze = vi.fn().mockResolvedValue({
+      explanation: 'Previous failure',
+      fixes: ['npm install'],
+    } satisfies AnalysisResponse);
+
+    await main(
+      {},
+      {
+        sessionStore: {
+          read: vi.fn().mockResolvedValue(sanitizedBundle),
+          toAnalysisRequest: vi.fn().mockReturnValue({
+            command: 'npm test',
+            output: 'Error: boom',
+            shellContext: { exitCode: 1, shell: 'zsh', timestamp: '2026-04-01T12:00:00.000Z' },
+          }),
+        } as any,
+        configManager: {
+          load: vi.fn().mockResolvedValue({
+            provider: 'local',
+            model: 'llama3',
+            cacheEnabled: false,
+            confirmBeforeSend: false,
+            includeCwd: false,
+          } satisfies Config),
+          validate: vi.fn(),
+        },
+        llmProviderFactory: vi.fn().mockReturnValue({ analyze }),
+      },
+    );
+
+    expect(analyze).toHaveBeenCalledOnce();
+  });
+
   it('analyzes a captured session, redacts secrets, and uses cache with shell metadata', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
+    const sanitizedBundle: SanitizedSessionBundle = {
+      command: 'curl https://example.com?token=[REDACTED:OPENAI_KEY]',
+      output: 'Error: invalid token [REDACTED:OPENAI_KEY]',
+      exitCode: 1,
+      timestamp: '2026-04-01T12:00:00.000Z',
+      shell: 'zsh',
+      truncated: false,
+      redactionsApplied: 2,
+    };
+
     const analysisRequest: AnalysisRequest = {
-      command: 'curl https://example.com?token=sk-12345678901234567890123456789012',
-      output: 'Error: invalid token sk-12345678901234567890123456789012',
+      command: sanitizedBundle.command,
+      output: sanitizedBundle.output,
       shellContext: {
-        cwd: '/tmp/project',
         shell: 'zsh',
         exitCode: 1,
         timestamp: '2026-04-01T12:00:00.000Z',
@@ -83,7 +167,7 @@ describe('main shell-session flow', () => {
       { cacheEnabled: true },
       {
         sessionStore: {
-          read: vi.fn().mockResolvedValue({}),
+          read: vi.fn().mockResolvedValue(sanitizedBundle),
           toAnalysisRequest: vi.fn().mockReturnValue(analysisRequest),
         } as any,
         configManager: {
@@ -92,6 +176,7 @@ describe('main shell-session flow', () => {
             model: 'llama3',
             cacheEnabled: true,
             cacheTTL: 1000,
+            includeCwd: false,
             confirmBeforeSend: false,
           } satisfies Config),
           validate,
@@ -104,15 +189,15 @@ describe('main shell-session flow', () => {
     expect(validate).toHaveBeenCalled();
     expect(cacheGet).toHaveBeenCalledWith(
       expect.objectContaining({
-        command: expect.stringContaining('[REDACTED]'),
-        output: expect.stringContaining('[REDACTED]'),
+        command: expect.stringContaining('[REDACTED:'),
+        output: expect.stringContaining('[REDACTED:'),
         shellContext: expect.objectContaining({ exitCode: 1, shell: 'zsh' }),
       }),
     );
     expect(analyze).toHaveBeenCalledWith(
       expect.objectContaining({
-        command: expect.stringContaining('[REDACTED]'),
-        output: expect.stringContaining('[REDACTED]'),
+        command: expect.stringContaining('[REDACTED:'),
+        output: expect.stringContaining('[REDACTED:'),
         shellContext: expect.objectContaining({ timestamp: '2026-04-01T12:00:00.000Z' }),
       }),
     );

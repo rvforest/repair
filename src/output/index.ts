@@ -1,8 +1,10 @@
 import chalk from 'chalk';
 import { AnalysisResponse } from '../types';
+import { TerminalSanitizer } from '../security';
 
 export class OutputFormatter {
   private supportsColor: boolean;
+  private readonly sanitizer = new TerminalSanitizer();
 
   constructor() {
     // Check if terminal supports color
@@ -10,6 +12,12 @@ export class OutputFormatter {
   }
 
   formatResponse(response: AnalysisResponse): string {
+    const safeResponse = {
+      explanation: this.sanitizer.sanitize(response.explanation),
+      fixes: response.fixes.map((fix) => this.sanitizer.sanitize(fix)),
+      additionalContext: response.additionalContext ? this.sanitizer.sanitize(response.additionalContext) : undefined,
+    };
+
     let output = '';
 
     // Header
@@ -17,24 +25,24 @@ export class OutputFormatter {
     output += '\n\n';
 
     // Explanation section
-    output += this.formatSection('Explanation', response.explanation);
+    output += this.formatSection('Explanation', safeResponse.explanation);
     output += '\n\n';
 
     // Fixes section
-    if (response.fixes.length > 0) {
+    if (safeResponse.fixes.length > 0) {
       output += this.formatSection('Suggested Fixes');
       output += '\n';
 
-      response.fixes.forEach((fix, index) => {
+      safeResponse.fixes.forEach((fix, index) => {
         output += this.formatCommand(fix, index + 1);
         output += '\n';
       });
     }
 
     // Additional context section
-    if (response.additionalContext) {
+    if (safeResponse.additionalContext) {
       output += '\n';
-      output += this.formatSection('Additional Context', response.additionalContext);
+      output += this.formatSection('Additional Context', safeResponse.additionalContext);
       output += '\n';
     }
 
@@ -106,30 +114,34 @@ export class OutputFormatter {
   }
 
   formatError(message: string): string {
+    const safeMessage = this.sanitizer.sanitize(message);
     if (this.supportsColor) {
-      return chalk.red('Error: ') + message;
+      return chalk.red('Error: ') + safeMessage;
     }
-    return 'Error: ' + message;
+    return 'Error: ' + safeMessage;
   }
 
   formatWarning(message: string): string {
+    const safeMessage = this.sanitizer.sanitize(message);
     if (this.supportsColor) {
-      return chalk.yellow('Warning: ') + message;
+      return chalk.yellow('Warning: ') + safeMessage;
     }
-    return 'Warning: ' + message;
+    return 'Warning: ' + safeMessage;
   }
 
   formatInfo(message: string): string {
+    const safeMessage = this.sanitizer.sanitize(message);
     if (this.supportsColor) {
-      return chalk.blue('Info: ') + message;
+      return chalk.blue('Info: ') + safeMessage;
     }
-    return 'Info: ' + message;
+    return 'Info: ' + safeMessage;
   }
 
   formatSuccess(message: string): string {
+    const safeMessage = this.sanitizer.sanitize(message);
     if (this.supportsColor) {
-      return chalk.green('✓ ') + message;
+      return chalk.green('✓ ') + safeMessage;
     }
-    return '✓ ' + message;
+    return '✓ ' + safeMessage;
   }
 }
