@@ -14,35 +14,43 @@ export class OutputFormatter {
   formatResponse(response: AnalysisResponse): string {
     const safeResponse = {
       explanation: this.sanitizer.sanitize(response.explanation),
-      fixes: response.fixes.map((fix) => this.sanitizer.sanitize(fix)),
+      directFixes: response.directFixes.map((fix) => this.sanitizer.sanitize(fix)),
+      debugSteps: response.debugSteps.map((step) => this.sanitizer.sanitize(step)),
       additionalContext: response.additionalContext ? this.sanitizer.sanitize(response.additionalContext) : undefined,
     };
 
     let output = '';
 
     // Header
-    output += this.formatHeader('Error Analysis');
+    output += this.formatHeader('Repair');
     output += '\n\n';
 
     // Explanation section
-    output += this.formatSection('Explanation', safeResponse.explanation);
+    output += this.formatSection('Why', safeResponse.explanation);
     output += '\n\n';
 
-    // Fixes section
-    if (safeResponse.fixes.length > 0) {
-      output += this.formatSection('Suggested Fixes');
-      output += '\n';
+    if (safeResponse.directFixes.length > 0) {
+      output += this.formatCommandSection('Run now', safeResponse.directFixes);
 
-      safeResponse.fixes.forEach((fix, index) => {
-        output += this.formatCommand(fix, index + 1);
+      if (safeResponse.debugSteps.length > 0 || safeResponse.additionalContext) {
         output += '\n';
-      });
+      }
+    }
+
+    if (safeResponse.debugSteps.length > 0) {
+      output += this.formatCommandSection(
+        safeResponse.directFixes.length > 0 ? 'Or debug' : 'Debug',
+        safeResponse.debugSteps,
+      );
+
+      if (safeResponse.additionalContext) {
+        output += '\n';
+      }
     }
 
     // Additional context section
     if (safeResponse.additionalContext) {
-      output += '\n';
-      output += this.formatSection('Additional Context', safeResponse.additionalContext);
+      output += this.formatSection('Note', safeResponse.additionalContext);
       output += '\n';
     }
 
@@ -68,6 +76,18 @@ export class OutputFormatter {
     if (content) {
       output += '\n' + this.wrapText(content);
     }
+
+    return output;
+  }
+
+  private formatCommandSection(title: string, commands: string[]): string {
+    let output = this.formatSection(title);
+    output += '\n';
+
+    commands.forEach((command, index) => {
+      output += this.formatCommand(command, index + 1);
+      output += '\n';
+    });
 
     return output;
   }

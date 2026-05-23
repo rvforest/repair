@@ -1,6 +1,7 @@
 import fetch from 'node-fetch';
 import { AnalysisRequest, AnalysisResponse } from '../types';
 import { LLMProvider } from './base';
+import { buildAnalysisPrompt, parseAnalysisResponse } from './prompt';
 
 export class AnthropicProvider extends LLMProvider {
   private defaultModel = 'claude-haiku-4-5-20251001';
@@ -8,6 +9,7 @@ export class AnthropicProvider extends LLMProvider {
   async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
     const model = this.model || this.defaultModel;
     const baseURL = this.resolveBaseURL('https://api.anthropic.com/v1');
+    const prompt = buildAnalysisPrompt(request);
 
     const response = await fetch(`${baseURL}/messages`, {
       method: 'POST',
@@ -19,11 +21,11 @@ export class AnthropicProvider extends LLMProvider {
       body: JSON.stringify({
         model,
         max_tokens: 1000,
-        system: this.buildSystemPrompt(),
+        system: prompt.system,
         messages: [
           {
             role: 'user',
-            content: this.buildUserPrompt(request),
+            content: prompt.user,
           },
         ],
       }),
@@ -40,6 +42,6 @@ export class AnthropicProvider extends LLMProvider {
       throw new Error('No response from Anthropic');
     }
 
-    return this.parseResponse(content);
+    return parseAnalysisResponse(content);
   }
 }

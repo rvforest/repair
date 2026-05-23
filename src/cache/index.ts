@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
+import { ANALYSIS_PROMPT_VERSION } from '../llm/prompt';
 import { AnalysisRequest, AnalysisResponse, CacheEntry } from '../types';
 import { ensurePrivateDirectory, pathExists, readTextFileSafe, writeTextFileAtomic } from '../storage';
 
@@ -22,11 +23,14 @@ export class CacheManager {
     const hash = crypto.createHash('sha256');
     hash.update(
       JSON.stringify({
+        promptVersion: ANALYSIS_PROMPT_VERSION,
         command: request.command,
         output: request.output,
         cwd: request.shellContext?.cwd,
         shell: request.shellContext?.shell,
         exitCode: request.shellContext?.exitCode,
+        truncated: request.captureMetadata?.truncated,
+        redactionsApplied: request.captureMetadata?.redactionsApplied,
       })
     );
     return hash.digest('hex');

@@ -237,6 +237,18 @@ export class SecurityFilter {
     const cwd = options.includeCwd ? request.shellContext?.cwd : undefined;
     const sanitizedCwd = cwd ? this.redactor.redact(this.terminalSanitizer.sanitize(cwd)).text : undefined;
     const limitedCwd = sanitizedCwd ? this.limiter.limitField(sanitizedCwd, MAX_CWD_BYTES).text : undefined;
+    const sanitizedCaptureMetadata = request.captureMetadata
+      ? {
+          ...(request.captureMetadata.truncated !== undefined
+            ? { truncated: request.captureMetadata.truncated === true }
+            : {}),
+          ...(typeof request.captureMetadata.redactionsApplied === 'number'
+            && Number.isInteger(request.captureMetadata.redactionsApplied)
+            && request.captureMetadata.redactionsApplied >= 0
+            ? { redactionsApplied: request.captureMetadata.redactionsApplied }
+            : {}),
+        }
+      : undefined;
 
     return {
       command: limitedCommand.text,
@@ -247,13 +259,17 @@ export class SecurityFilter {
         ...(request.shellContext?.exitCode !== undefined ? { exitCode: request.shellContext.exitCode } : {}),
         ...(request.shellContext?.timestamp ? { timestamp: request.shellContext.timestamp } : {}),
       },
+      ...(sanitizedCaptureMetadata && Object.keys(sanitizedCaptureMetadata).length > 0
+        ? { captureMetadata: sanitizedCaptureMetadata }
+        : {}),
     };
   }
 
   sanitizeResponse(response: AnalysisResponse): AnalysisResponse {
     return {
       explanation: this.terminalSanitizer.sanitize(response.explanation),
-      fixes: response.fixes.map((fix) => this.terminalSanitizer.sanitize(fix)),
+      directFixes: response.directFixes.map((fix) => this.terminalSanitizer.sanitize(fix)),
+      debugSteps: response.debugSteps.map((step) => this.terminalSanitizer.sanitize(step)),
       ...(response.additionalContext
         ? { additionalContext: this.terminalSanitizer.sanitize(response.additionalContext) }
         : {}),

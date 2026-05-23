@@ -29,7 +29,8 @@ describe('CacheManager', () => {
       },
       {
         explanation: 'Bad test',
-        fixes: ['npm install'],
+        directFixes: ['npm install'],
+        debugSteps: [],
       },
     );
 
@@ -39,5 +40,41 @@ describe('CacheManager', () => {
 
     expect(fs.statSync(repairCacheDir).mode & 0o777).toBe(0o700);
     expect(fs.statSync(cachePath).mode & 0o777).toBe(0o600);
+  });
+
+  it('distinguishes cache entries by capture metadata', async () => {
+    const cache = new CacheManager(60_000);
+
+    await cache.set(
+      {
+        command: 'npm test',
+        output: 'Error: boom',
+        shellContext: { exitCode: 1, shell: 'zsh' },
+        captureMetadata: { truncated: false, redactionsApplied: 0 },
+      },
+      {
+        explanation: 'Bad test',
+        directFixes: ['npm install'],
+        debugSteps: [],
+      },
+    );
+
+    await cache.set(
+      {
+        command: 'npm test',
+        output: 'Error: boom',
+        shellContext: { exitCode: 1, shell: 'zsh' },
+        captureMetadata: { truncated: true, redactionsApplied: 3 },
+      },
+      {
+        explanation: 'Truncated output',
+        directFixes: [],
+        debugSteps: ['npm install'],
+      },
+    );
+
+    const repairCacheDir = path.join(cacheDir, 'repair');
+
+    expect(fs.readdirSync(repairCacheDir)).toHaveLength(2);
   });
 });
