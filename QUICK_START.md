@@ -108,17 +108,20 @@ export REPAIR_MAX_PERSISTED_OUTPUT_BYTES=16384
    repair
    ```
 
-5. **Get explanation and fixes**:
+5. **Get an explanation plus direct fixes or debug steps**:
 
    ```
-   ═══ Error Analysis ═══
+    === Repair ===
 
-   Explanation:
+    Why:
    The Node.js application is trying to import the 'express' module...
 
-   Suggested Fixes:
+    Run now:
      1. npm install express
      2. npm install
+
+    Or debug:
+       1. npm ls express
    ```
 
 Only failed commands are persisted for analysis. If the last command succeeds, `repair` will tell you that no failed command is currently available.

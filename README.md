@@ -1,6 +1,6 @@
 # repAIr - LLM-Driven Error Fixer CLI
 
-A CLI tool that uses Large Language Models to explain terminal errors and suggest fixes. Unlike rule-based tools, repAIr uses AI to understand any error type and provide intelligent, contextual suggestions.
+A CLI tool that uses Large Language Models to explain terminal errors and suggest direct fixes or debug steps. Unlike rule-based tools, repAIr uses AI to understand any error type and provide intelligent, contextual suggestions.
 
 ## Features
 
@@ -10,7 +10,7 @@ A CLI tool that uses Large Language Models to explain terminal errors and sugges
 - **Multiple LLM Providers**: Support for OpenAI, Anthropic (Claude), Google (Gemini), OpenRouter, and local models
 - **Privacy-Focused**: Automatic secret detection and redaction before sending data to LLMs
 - **Response Caching**: Reduces API costs by caching responses for 24 hours
-- **Beautiful Output**: Formatted, colorized output with clear explanations and actionable fixes
+- **Beautiful Output**: Formatted, colorized output with clear explanations, direct fixes, and targeted debug steps
 
 ## Requirements
 
@@ -118,40 +118,40 @@ Create `~/.config/repair/config.json`:
 ```bash
 export REPAIR_PROVIDER=openai
 export REPAIR_API_KEY=sk-...
-export REPAIR_MODEL=gpt-4-turbo-preview  # optional
+export REPAIR_MODEL=gpt-5.4-mini  # optional
 ```
 
-Default model: `gpt-4-turbo-preview`
+Default model: `gpt-5.4-mini`
 
 ### Anthropic (Claude)
 
 ```bash
 export REPAIR_PROVIDER=anthropic
 export REPAIR_API_KEY=sk-ant-...
-export REPAIR_MODEL=claude-3-5-sonnet-20241022  # optional
+export REPAIR_MODEL=claude-haiku-4-5-20251001  # optional
 ```
 
-Default model: `claude-3-5-sonnet-20241022`
+Default model: `claude-haiku-4-5-20251001`
 
 ### Google (Gemini)
 
 ```bash
 export REPAIR_PROVIDER=google
 export REPAIR_API_KEY=AIza...
-export REPAIR_MODEL=gemini-1.5-pro  # optional
+export REPAIR_MODEL=gemini-2.5-flash-lite  # optional
 ```
 
-Default model: `gemini-1.5-pro`
+Default model: `gemini-2.5-flash-lite`
 
 ### OpenRouter
 
 ```bash
 export REPAIR_PROVIDER=openrouter
 export REPAIR_API_KEY=sk-or-...
-export REPAIR_MODEL=anthropic/claude-3.5-sonnet  # optional
+export REPAIR_MODEL=anthropic/claude-haiku-4-5-20251001  # optional
 ```
 
-Default model: `anthropic/claude-3.5-sonnet`
+Default model: `anthropic/claude-haiku-4-5-20251001`
 
 ### Local Models (Ollama, LM Studio)
 
@@ -191,18 +191,19 @@ $ npm start
 Error: Cannot find module 'express'
 
 $ repair
-═══ Error Analysis ═══
+=== Repair ===
 
-Explanation:
-The Node.js application is trying to import the 'express' module, but it's not installed
-in your project's node_modules directory. This is a common issue when dependencies haven't
-been installed or the package.json is out of sync.
+Why:
+The command failed because the `express` dependency is missing from this project's installed packages.
 
-Suggested Fixes:
+Run now:
   1. npm install express
   2. npm install
 
-Additional Context:
+Or debug:
+   1. npm ls express
+
+Note:
 Make sure express is listed in your package.json dependencies.
 ```
 
