@@ -32,6 +32,43 @@ describe('buildAnalysisPrompt', () => {
     expect(prompt.user).toContain('Prefer terse output that fits comfortably in a terminal pane.');
     expect(prompt.user).toContain('Use directFixes for high-confidence runnable corrections');
   });
+
+  it('limits oversized output while preserving its tail and reporting truncation', () => {
+    const prompt = buildAnalysisPrompt({
+      command: 'npm test',
+      output: `START-${'x'.repeat(9_000)}-FINAL ERROR`,
+      captureMetadata: {
+        truncated: false,
+        redactionsApplied: 0,
+      },
+    });
+
+    const payload = JSON.parse(prompt.user.slice(prompt.user.indexOf('{'))) as {
+      output: string;
+      capture: {
+        truncated: boolean;
+        redactionsApplied: number;
+      };
+    };
+
+    expect(payload.output.length).toBeLessThanOrEqual(8_000);
+    expect(payload.output).toContain('output truncated for analysis');
+    expect(payload.output).not.toContain('START-');
+    expect(payload.output.endsWith('-FINAL ERROR')).toBe(true);
+    expect(payload.capture).toEqual({
+      truncated: true,
+      redactionsApplied: 0,
+    });
+  });
+
+  it('adds capture metadata when only prompt-level truncation occurred', () => {
+    const prompt = buildAnalysisPrompt({
+      command: 'npm test',
+      output: 'x'.repeat(9_000),
+    });
+
+    expect(prompt.user).toContain('"truncated": true');
+  });
 });
 
 describe('parseAnalysisResponse', () => {

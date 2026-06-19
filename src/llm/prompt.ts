@@ -1,7 +1,10 @@
 import { TerminalSanitizer } from '../security';
 import { AnalysisRequest, AnalysisResponse } from '../types';
 
-export const ANALYSIS_PROMPT_VERSION = 'analysis-v3';
+export const ANALYSIS_PROMPT_VERSION = 'analysis-v4';
+
+const MAX_ANALYSIS_OUTPUT_CHARS = 8_000;
+const OUTPUT_TRUNCATION_MARKER = '... (output truncated for analysis) ...\n';
 
 const ANALYSIS_SYSTEM_PROMPT = `You are Repair, a terse debugging assistant for failed terminal commands.
 
@@ -38,9 +41,12 @@ export interface BuiltAnalysisPrompt {
 const sanitizer = new TerminalSanitizer();
 
 export function buildAnalysisPrompt(request: AnalysisRequest): BuiltAnalysisPrompt {
+  const limitedOutput = limitAnalysisOutput(sanitizer.sanitize(request.output));
+  const hasCaptureMetadata = request.captureMetadata !== undefined || limitedOutput.truncated;
+
   const payload = {
     command: sanitizer.sanitize(request.command),
-    output: sanitizer.sanitize(request.output),
+    output: limitedOutput.text,
     ...(request.shellContext
       ? {
           context: {
@@ -51,13 +57,13 @@ export function buildAnalysisPrompt(request: AnalysisRequest): BuiltAnalysisProm
           },
         }
       : {}),
-    ...(request.captureMetadata
+    ...(hasCaptureMetadata
       ? {
           capture: {
-            ...(request.captureMetadata.truncated !== undefined
-              ? { truncated: request.captureMetadata.truncated }
+            ...(request.captureMetadata?.truncated !== undefined || limitedOutput.truncated
+              ? { truncated: request.captureMetadata?.truncated === true || limitedOutput.truncated }
               : {}),
-            ...(request.captureMetadata.redactionsApplied !== undefined
+            ...(request.captureMetadata?.redactionsApplied !== undefined
               ? { redactionsApplied: request.captureMetadata.redactionsApplied }
               : {}),
           },
@@ -76,6 +82,18 @@ export function buildAnalysisPrompt(request: AnalysisRequest): BuiltAnalysisProm
       'If the payload indicates truncation or redaction, account for that in your confidence and recommendations.',
       JSON.stringify(payload, null, 2),
     ].join('\n\n'),
+  };
+}
+
+function limitAnalysisOutput(output: string): { text: string; truncated: boolean } {
+  if (output.length <= MAX_ANALYSIS_OUTPUT_CHARS) {
+    return { text: output, truncated: false };
+  }
+
+  const tailLength = MAX_ANALYSIS_OUTPUT_CHARS - OUTPUT_TRUNCATION_MARKER.length;
+  return {
+    text: OUTPUT_TRUNCATION_MARKER + output.slice(-tailLength),
+    truncated: true,
   };
 }
 
