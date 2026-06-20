@@ -100,7 +100,8 @@ describe('main shell-session flow', () => {
 
     const analyze = vi.fn().mockResolvedValue({
       explanation: 'Previous failure',
-      fixes: ['npm install'],
+      directFixes: [],
+      debugSteps: ['npm install'],
     } satisfies AnalysisResponse);
 
     await main(
@@ -156,7 +157,8 @@ describe('main shell-session flow', () => {
 
     const analyze = vi.fn().mockResolvedValue({
       explanation: 'Bad token',
-      fixes: ['export REPAIR_API_KEY=...'],
+      directFixes: ['export REPAIR_API_KEY=...'],
+      debugSteps: ['printenv REPAIR_API_KEY'],
     } satisfies AnalysisResponse);
 
     const cacheGet = vi.fn().mockResolvedValue(null);

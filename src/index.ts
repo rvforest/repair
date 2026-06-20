@@ -90,7 +90,13 @@ export async function main(
 
     configManager.validate(effectiveConfig);
 
-    let analysisRequest = sessionStore.toAnalysisRequest(sessionBundle, effectiveConfig.includeCwd === true);
+    let analysisRequest: AnalysisRequest = {
+      ...sessionStore.toAnalysisRequest(sessionBundle, effectiveConfig.includeCwd === true),
+      captureMetadata: {
+        truncated: sessionBundle.truncated,
+        redactionsApplied: sessionBundle.redactionsApplied,
+      },
+    };
     analysisRequest = securityFilter.sanitizeAnalysisRequest(analysisRequest, {
       includeCwd: effectiveConfig.includeCwd,
       maxPersistedOutputBytes: effectiveConfig.maxPersistedOutputBytes,

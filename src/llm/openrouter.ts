@@ -1,6 +1,7 @@
 import fetch from 'node-fetch';
 import { AnalysisRequest, AnalysisResponse } from '../types';
 import { LLMProvider } from './base';
+import { buildAnalysisPrompt, parseAnalysisResponse } from './prompt';
 
 export class OpenRouterProvider extends LLMProvider {
   private defaultModel = 'anthropic/claude-haiku-4-5-20251001';
@@ -8,6 +9,7 @@ export class OpenRouterProvider extends LLMProvider {
   async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
     const model = this.model || this.defaultModel;
     const baseURL = this.resolveBaseURL('https://openrouter.ai/api/v1');
+    const prompt = buildAnalysisPrompt(request);
 
     const response = await fetch(`${baseURL}/chat/completions`, {
       method: 'POST',
@@ -22,11 +24,11 @@ export class OpenRouterProvider extends LLMProvider {
         messages: [
           {
             role: 'system',
-            content: this.buildSystemPrompt(),
+            content: prompt.system,
           },
           {
             role: 'user',
-            content: this.buildUserPrompt(request),
+            content: prompt.user,
           },
         ],
         temperature: 0.3,
@@ -45,6 +47,6 @@ export class OpenRouterProvider extends LLMProvider {
       throw new Error('No response from OpenRouter');
     }
 
-    return this.parseResponse(content);
+    return parseAnalysisResponse(content);
   }
 }

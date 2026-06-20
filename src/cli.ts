@@ -12,7 +12,7 @@ const program = new Command();
 
 program
   .name('repair')
-  .description('LLM-driven CLI tool for explaining terminal errors and suggesting fixes')
+  .description('LLM-driven CLI tool for explaining terminal errors and suggesting direct fixes or debug steps')
   .version(version)
   .option('--no-cache', 'Bypass cache and always make fresh API request')
   .option('--confirm', 'Display data before sending to LLM and wait for approval')

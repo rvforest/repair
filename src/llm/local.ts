@@ -1,6 +1,7 @@
 import fetch from 'node-fetch';
 import { AnalysisRequest, AnalysisResponse } from '../types';
 import { LLMProvider } from './base';
+import { buildAnalysisPrompt, parseAnalysisResponse } from './prompt';
 
 export class LocalProvider extends LLMProvider {
   private defaultModel = 'llama2';
@@ -13,6 +14,7 @@ export class LocalProvider extends LLMProvider {
     }
 
     const baseURL = this.resolveBaseURL(this.baseURL, true);
+    const prompt = buildAnalysisPrompt(request);
 
     // Use OpenAI-compatible API format (works with Ollama, LM Studio, etc.)
     const response = await fetch(`${baseURL}/chat/completions`, {
@@ -25,11 +27,11 @@ export class LocalProvider extends LLMProvider {
         messages: [
           {
             role: 'system',
-            content: this.buildSystemPrompt(),
+            content: prompt.system,
           },
           {
             role: 'user',
-            content: this.buildUserPrompt(request),
+            content: prompt.user,
           },
         ],
         temperature: 0.3,
@@ -48,6 +50,6 @@ export class LocalProvider extends LLMProvider {
       throw new Error('No response from local model');
     }
 
-    return this.parseResponse(content);
+    return parseAnalysisResponse(content);
   }
 }

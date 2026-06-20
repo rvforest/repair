@@ -20,10 +20,16 @@ export interface LLMProviderConfig {
   baseURL?: string;
 }
 
+export interface AnalysisCaptureMetadata {
+  truncated?: boolean;
+  redactionsApplied?: number;
+}
+
 export interface AnalysisRequest {
   command: string;
   output: string;
   shellContext?: ShellContext;
+  captureMetadata?: AnalysisCaptureMetadata;
 }
 
 export interface ShellContext {
@@ -55,13 +61,15 @@ export interface SessionWriteInput {
 
 export interface SanitizedResponseMetadata {
   explanation: string;
-  fixes: string[];
+  directFixes: string[];
+  debugSteps: string[];
   additionalContext?: string;
 }
 
 export interface AnalysisResponse {
   explanation: string;
-  fixes: string[];
+  directFixes: string[];
+  debugSteps: string[];
   additionalContext?: string;
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "repair",
   "version": "0.1.0",
-  "description": "LLM-driven CLI tool for explaining terminal errors and suggesting fixes",
+  "description": "LLM-driven CLI tool for explaining terminal errors and suggesting direct fixes or debug steps",
   "main": "dist/index.js",
   "bin": {
     "repair": "./dist/cli.js"

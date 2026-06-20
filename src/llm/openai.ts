@@ -1,6 +1,7 @@
 import fetch from 'node-fetch';
 import { AnalysisRequest, AnalysisResponse } from '../types';
 import { LLMProvider } from './base';
+import { buildAnalysisPrompt, parseAnalysisResponse } from './prompt';
 
 export class OpenAIProvider extends LLMProvider {
   private defaultModel = 'gpt-5.4-mini';
@@ -8,6 +9,7 @@ export class OpenAIProvider extends LLMProvider {
   async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
     const model = this.model || this.defaultModel;
     const baseURL = this.resolveBaseURL('https://api.openai.com/v1');
+    const prompt = buildAnalysisPrompt(request);
 
     const response = await fetch(`${baseURL}/chat/completions`, {
       method: 'POST',
@@ -20,11 +22,11 @@ export class OpenAIProvider extends LLMProvider {
         messages: [
           {
             role: 'system',
-            content: this.buildSystemPrompt(),
+            content: prompt.system,
           },
           {
             role: 'user',
-            content: this.buildUserPrompt(request),
+            content: prompt.user,
           },
         ],
         temperature: 0.3,
@@ -43,6 +45,6 @@ export class OpenAIProvider extends LLMProvider {
       throw new Error('No response from OpenAI');
     }
 
-    return this.parseResponse(content);
+    return parseAnalysisResponse(content);
   }
 }

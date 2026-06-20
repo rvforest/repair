@@ -1,6 +1,7 @@
 import fetch from 'node-fetch';
 import { AnalysisRequest, AnalysisResponse } from '../types';
 import { LLMProvider } from './base';
+import { buildAnalysisPrompt, parseAnalysisResponse } from './prompt';
 
 export class GoogleProvider extends LLMProvider {
   private defaultModel = 'gemini-2.5-flash-lite';
@@ -8,9 +9,7 @@ export class GoogleProvider extends LLMProvider {
   async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
     const model = this.model || this.defaultModel;
     const baseURL = this.resolveBaseURL('https://generativelanguage.googleapis.com/v1beta');
-
-    const systemPrompt = this.buildSystemPrompt();
-    const userPrompt = this.buildUserPrompt(request);
+    const prompt = buildAnalysisPrompt(request);
 
     const response = await fetch(
       `${baseURL}/models/${model}:generateContent`,
@@ -25,7 +24,7 @@ export class GoogleProvider extends LLMProvider {
             {
               parts: [
                 {
-                  text: `${systemPrompt}\n\n${userPrompt}`,
+                  text: `${prompt.system}\n\n${prompt.user}`,
                 },
               ],
             },
@@ -49,6 +48,6 @@ export class GoogleProvider extends LLMProvider {
       throw new Error('No response from Google Gemini');
     }
 
-    return this.parseResponse(content);
+    return parseAnalysisResponse(content);
   }
 }
