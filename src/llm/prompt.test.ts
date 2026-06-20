@@ -24,6 +24,9 @@ describe('buildAnalysisPrompt', () => {
     expect(prompt.system).toContain('1 short sentence');
     expect(prompt.system).toContain('directFixes');
     expect(prompt.system).toContain('debugSteps');
+    expect(prompt.system).toContain('directly supported by the captured output');
+    expect(prompt.system).toContain('Do not assume an operating system, package manager');
+    expect(prompt.system).toContain('Never invent credentials, ports, container settings');
     expect(prompt.user).toContain('"command": "npm test"');
     expect(prompt.user).toContain('"output": "Error: boom"');
     expect(prompt.user).toContain('"cwd": "/tmp/project"');
@@ -31,6 +34,29 @@ describe('buildAnalysisPrompt', () => {
     expect(prompt.user).toContain('"redactionsApplied": 2');
     expect(prompt.user).toContain('Prefer terse output that fits comfortably in a terminal pane.');
     expect(prompt.user).toContain('Use directFixes for high-confidence runnable corrections');
+  });
+
+  it('keeps environment-specific recovery commands out of direct fixes without explicit context', () => {
+    const prompt = buildAnalysisPrompt({
+      command: 'npm run migrate',
+      output: 'Error: connect ECONNREFUSED 127.0.0.1:5432',
+      shellContext: {
+        shell: 'zsh',
+        exitCode: 1,
+      },
+    });
+
+    expect(prompt.system).toContain(
+      'Put speculative installation, service-start, container, credential, or configuration commands in debugSteps',
+    );
+    expect(prompt.system).toContain(
+      'Do not assume an operating system, package manager, service manager, container runtime',
+    );
+    expect(prompt.system).toContain(
+      'Never suggest commands that print secret-bearing environment variables',
+    );
+    expect(prompt.user).toContain('"command": "npm run migrate"');
+    expect(prompt.user).toContain('"output": "Error: connect ECONNREFUSED 127.0.0.1:5432"');
   });
 
   it('limits oversized output while preserving its tail and reporting truncation', () => {

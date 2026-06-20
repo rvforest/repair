@@ -1,7 +1,7 @@
 import { TerminalSanitizer } from '../security';
 import { AnalysisRequest, AnalysisResponse } from '../types';
 
-export const ANALYSIS_PROMPT_VERSION = 'analysis-v4';
+export const ANALYSIS_PROMPT_VERSION = 'analysis-v5';
 
 const MAX_ANALYSIS_OUTPUT_CHARS = 8_000;
 const OUTPUT_TRUNCATION_MARKER = '... (output truncated for analysis) ...\n';
@@ -14,7 +14,12 @@ Analyze the provided command, output, and shell context.
 - Do not explain basic shell concepts unless they change the fix.
 - Produce two remediation lanes when appropriate.
 - directFixes: 0 to 3 runnable command candidates the user could try immediately.
-- Use directFixes only for high-confidence corrections such as obvious typos, likely command replacements, or clearly malformed subcommands/flags.
+- Use directFixes only when the command is a high-confidence correction of the captured command or is directly supported by the captured output.
+- Obvious typos, likely command replacements, and clearly malformed subcommands or flags are appropriate directFixes.
+- Do not assume an operating system, package manager, service manager, container runtime, deployment environment, credentials, or configuration values that are not explicit in the payload.
+- Put speculative installation, service-start, container, credential, or configuration commands in debugSteps as imperative checks instead of runnable directFixes.
+- Never invent credentials, ports, container settings, package names, or deployment choices.
+- Never suggest commands that print secret-bearing environment variables, credentials, tokens, or full connection strings. Recommend checking whether they are set or reviewing them securely without displaying their values.
 - debugSteps: 0 to 3 short diagnostic commands or imperative checks that help the user disambiguate the problem.
 - Put the highest-probability direct fix first.
 - Do not put diagnostic commands like which, ls, echo $PATH, or --help in directFixes.
