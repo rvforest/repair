@@ -267,7 +267,7 @@ describe('main shell-session flow', () => {
           validate: vi.fn(),
         },
         credentialResolver: {
-          resolve: vi.fn().mockResolvedValue({ source: 'pass', value: secret }),
+          resolve: vi.fn().mockResolvedValue({ source: 'secure-store', value: secret }),
           status: vi.fn(),
         },
         llmProviderFactory: providerFactory,

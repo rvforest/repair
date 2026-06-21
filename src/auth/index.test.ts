@@ -3,6 +3,11 @@ import { EventEmitter } from 'events';
 import { describe, expect, it, vi } from 'vitest';
 import { promptMasked, registerAuthCommands, removeCredential, setCredential, showCredentialStatus } from './index';
 
+const testBackend = {
+  id: 'test-store',
+  displayName: 'test secure store',
+};
+
 function outputBuffer() {
   let value = '';
   return {
@@ -20,6 +25,7 @@ describe('auth commands', () => {
   it('preflights before prompting and stores a provider-scoped credential', async () => {
     const calls: string[] = [];
     const store = {
+      backend: testBackend,
       preflight: vi.fn(async () => {
         calls.push('preflight');
       }),
@@ -39,19 +45,23 @@ describe('auth commands', () => {
     });
     const output = outputBuffer();
 
+    const storeFactory = vi.fn(() => store);
     await setCredential('anthropic', false, {
-      store,
+      storeFactory,
       promptSecret,
       stdout: output.stream,
     });
 
+    expect(storeFactory).toHaveBeenCalledOnce();
     expect(calls).toEqual(['preflight', 'exists', 'prompt', 'set']);
     expect(store.set).toHaveBeenCalledWith('anthropic', 'secret-value');
+    expect(output.value()).toContain('test secure store');
     expect(output.value()).not.toContain('secret-value');
   });
 
   it('does not prompt when overwrite is declined', async () => {
     const store = {
+      backend: testBackend,
       preflight: vi.fn(),
       exists: vi.fn().mockResolvedValue(true),
       set: vi.fn(),
@@ -74,6 +84,7 @@ describe('auth commands', () => {
 
   it('forces overwrite but still prompts securely for the new value', async () => {
     const store = {
+      backend: testBackend,
       preflight: vi.fn(),
       exists: vi.fn().mockResolvedValue(true),
       set: vi.fn(),
@@ -91,20 +102,24 @@ describe('auth commands', () => {
     expect(store.set).toHaveBeenCalledWith('google', 'new-secret');
   });
 
-  it('reports pass status without displaying or retrieving the credential', async () => {
+  it('reports secure-store status without displaying or retrieving the credential', async () => {
     const output = outputBuffer();
     await showCredentialStatus('openrouter', {
+      store: {
+        backend: testBackend,
+      } as any,
       resolver: {
-        status: vi.fn().mockResolvedValue({ source: 'pass' }),
+        status: vi.fn().mockResolvedValue({ source: 'secure-store', backend: testBackend }),
       } as any,
       stdout: output.stream,
     });
-    expect(output.value()).toBe('openrouter: pass\n');
+    expect(output.value()).toBe('openrouter: secure-store (test secure store)\n');
   });
 
   it('removes credentials and handles missing entries gracefully', async () => {
     const output = outputBuffer();
     const store = {
+      backend: testBackend,
       remove: vi.fn().mockResolvedValue(false),
       preflight: vi.fn(),
       exists: vi.fn(),
@@ -131,6 +146,7 @@ describe('auth commands', () => {
     await expect(
       setCredential('openai', false, {
         store: {
+          backend: testBackend,
           preflight: vi.fn().mockRejectedValue(new Error('backend unavailable')),
           exists: vi.fn(),
           get: vi.fn(),
@@ -148,6 +164,7 @@ describe('auth commands', () => {
     program.exitOverride();
     program.configureOutput({ writeErr: () => undefined });
     const store = {
+      backend: testBackend,
       preflight: vi.fn(),
       exists: vi.fn(),
       get: vi.fn(),

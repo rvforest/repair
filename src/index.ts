@@ -89,7 +89,7 @@ export async function main(options: MainOptions = {}, dependencies: MainDependen
         apiKey = (await credentialResolver.resolve(config.provider))?.value;
       } catch (error) {
         if (error instanceof CredentialError) {
-          throw new Error(credentialErrorMessage(error, config.provider));
+          throw new Error(credentialErrorMessage(error, config.provider, error.backend));
         }
         throw error;
       }

@@ -4,7 +4,18 @@ import * as os from 'os';
 import * as path from 'path';
 import { PassThrough } from 'stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CredentialError, CredentialResolver, maskCredential, PassCredentialStore } from './index';
+import {
+  createCredentialStore,
+  CredentialError,
+  CredentialResolver,
+  maskCredential,
+  PassCredentialStore,
+} from './index';
+
+const testBackend = {
+  id: 'test-store',
+  displayName: 'test secure store',
+};
 
 function fakeChild(code: number, stdout = '', stderr = ''): any {
   const child = new EventEmitter() as any;
@@ -85,7 +96,9 @@ describe('PassCredentialStore', () => {
     const spawnProcess = vi.fn(() => fakeChild(0, 'stored-secret\n'));
     const { dir, store } = initializedStore(spawnProcess);
     fs.mkdirSync(path.join(dir, 'repair'), { mode: 0o700 });
-    fs.writeFileSync(path.join(dir, 'repair', 'anthropic.gpg'), 'encrypted', { mode: 0o600 });
+    fs.writeFileSync(path.join(dir, 'repair', 'anthropic.gpg'), 'encrypted', {
+      mode: 0o600,
+    });
 
     await expect(store.get('anthropic')).resolves.toBe('stored-secret');
     expect(spawnProcess.mock.calls[0][1]).toEqual(['show', 'repair/anthropic']);
@@ -115,7 +128,9 @@ describe('PassCredentialStore', () => {
     const target = path.join(parent, 'target');
     const link = path.join(parent, 'store');
     fs.mkdirSync(target, { mode: 0o700 });
-    fs.writeFileSync(path.join(target, '.gpg-id'), 'test-key\n', { mode: 0o600 });
+    fs.writeFileSync(path.join(target, '.gpg-id'), 'test-key\n', {
+      mode: 0o600,
+    });
     fs.symlinkSync(target, link);
     const store = new PassCredentialStore({
       platform: 'linux',
@@ -142,7 +157,9 @@ describe('PassCredentialStore', () => {
     const spawnProcess = vi.fn(() => fakeChild(2, '', 'gpg: Operation cancelled SECRET'));
     const { dir, store } = initializedStore(spawnProcess);
     fs.mkdirSync(path.join(dir, 'repair'), { mode: 0o700 });
-    fs.writeFileSync(path.join(dir, 'repair', 'google.gpg'), 'encrypted', { mode: 0o600 });
+    fs.writeFileSync(path.join(dir, 'repair', 'google.gpg'), 'encrypted', {
+      mode: 0o600,
+    });
 
     const error = await store.get('google').catch((value) => value);
     expect(error).toBeInstanceOf(CredentialError);
@@ -184,6 +201,7 @@ describe('PassCredentialStore', () => {
 describe('CredentialResolver', () => {
   it('prefers a nonblank environment credential without reading the store', async () => {
     const store = {
+      backend: testBackend,
       get: vi.fn(),
       preflight: vi.fn(),
       exists: vi.fn(),
@@ -203,6 +221,7 @@ describe('CredentialResolver', () => {
 
   it('falls through blank environment values and isolates providers', async () => {
     const store = {
+      backend: testBackend,
       get: vi.fn().mockResolvedValue('pass-key'),
       preflight: vi.fn(),
       exists: vi.fn(),
@@ -212,14 +231,16 @@ describe('CredentialResolver', () => {
     const resolver = new CredentialResolver(store, { REPAIR_API_KEY: '   ' });
 
     await expect(resolver.resolve('anthropic')).resolves.toEqual({
-      source: 'pass',
+      source: 'secure-store',
       value: 'pass-key',
+      backend: testBackend,
     });
     expect(store.get).toHaveBeenCalledWith('anthropic');
   });
 
   it('does not inspect credentials for local providers', async () => {
     const store = {
+      backend: testBackend,
       get: vi.fn(),
       preflight: vi.fn(),
       exists: vi.fn(),
@@ -233,8 +254,9 @@ describe('CredentialResolver', () => {
     expect(store.get).not.toHaveBeenCalled();
   });
 
-  it('reports pass status without decrypting the credential', async () => {
+  it('reports secure-store status without decrypting the credential', async () => {
     const store = {
+      backend: testBackend,
       get: vi.fn(),
       preflight: vi.fn(),
       exists: vi.fn().mockResolvedValue(true),
@@ -243,9 +265,28 @@ describe('CredentialResolver', () => {
     };
     const resolver = new CredentialResolver(store, {});
 
-    await expect(resolver.status('openai')).resolves.toEqual({ source: 'pass' });
+    await expect(resolver.status('openai')).resolves.toEqual({
+      source: 'secure-store',
+      backend: testBackend,
+    });
     expect(store.preflight).toHaveBeenCalled();
     expect(store.exists).toHaveBeenCalledWith('openai');
     expect(store.get).not.toHaveBeenCalled();
+  });
+
+  it('selects pass only for Linux and explicit unavailable stores elsewhere', async () => {
+    expect(createCredentialStore({ platform: 'linux' })).toBeInstanceOf(PassCredentialStore);
+
+    const macStore = createCredentialStore({ platform: 'darwin' });
+    expect(macStore.backend.displayName).toBe('macOS Keychain');
+    await expect(macStore.preflight()).rejects.toMatchObject({
+      code: 'backend-unavailable',
+    });
+
+    const windowsStore = createCredentialStore({ platform: 'win32' });
+    expect(windowsStore.backend.displayName).toBe('Windows Credential Manager');
+    await expect(windowsStore.preflight()).rejects.toMatchObject({
+      code: 'backend-unavailable',
+    });
   });
 });

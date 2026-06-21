@@ -6,7 +6,7 @@ import { LLMProvider } from '../types';
 
 export const REMOTE_PROVIDERS: readonly LLMProvider[] = ['openai', 'anthropic', 'google', 'openrouter'];
 
-export type CredentialSource = 'env' | 'pass' | 'missing' | 'unavailable';
+export type CredentialSource = 'env' | 'secure-store' | 'missing' | 'unavailable';
 export type CredentialErrorCode =
   | 'missing'
   | 'backend-unavailable'
@@ -16,20 +16,29 @@ export type CredentialErrorCode =
   | 'backend-failure';
 
 export interface ResolvedCredential {
-  source: 'env' | 'pass';
+  source: 'env' | 'secure-store';
   value: string;
+  backend?: CredentialBackend;
 }
 
 export interface CredentialStatus {
   source: CredentialSource;
   maskedValue?: string;
   errorCode?: CredentialErrorCode;
+  backend?: CredentialBackend;
+}
+
+export interface CredentialBackend {
+  id: string;
+  displayName: string;
+  setupHint?: string;
 }
 
 export class CredentialError extends Error {
   constructor(
     public readonly code: CredentialErrorCode,
     message: string,
+    public readonly backend?: CredentialBackend,
   ) {
     super(message);
     this.name = 'CredentialError';
@@ -37,6 +46,7 @@ export class CredentialError extends Error {
 }
 
 export interface CredentialStore {
+  readonly backend: CredentialBackend;
   preflight(): Promise<void>;
   exists(provider: LLMProvider): Promise<boolean>;
   get(provider: LLMProvider): Promise<string | null>;
@@ -47,6 +57,11 @@ export interface CredentialStore {
 export interface CredentialResolverLike {
   resolve(provider: LLMProvider): Promise<ResolvedCredential | null>;
   status(provider: LLMProvider): Promise<CredentialStatus>;
+}
+
+export interface CredentialStoreFactoryOptions {
+  platform?: NodeJS.Platform;
+  passOptions?: PassCredentialStoreOptions;
 }
 
 export function validateRemoteProvider(provider: string): LLMProvider {
@@ -63,13 +78,17 @@ export function maskCredential(value: string): string {
   return `******${value.slice(-4)}`;
 }
 
-export function credentialErrorMessage(error: CredentialError, provider: LLMProvider): string {
+export function credentialErrorMessage(
+  error: CredentialError,
+  provider: LLMProvider,
+  backend?: CredentialBackend,
+): string {
   const fallback = `Set REPAIR_API_KEY for non-interactive use.`;
   switch (error.code) {
     case 'backend-unavailable':
-      return `Secure credential storage is unavailable for ${provider}. ${fallback}`;
+      return `${backend?.displayName || 'Secure credential storage'} is unavailable for ${provider}. ${fallback}`;
     case 'backend-uninitialized':
-      return `The pass password store is not initialized. Initialize pass independently, or ${fallback.toLowerCase()}`;
+      return `${error.message} ${backend?.setupHint || fallback}`;
     case 'cancelled':
       return `Secure credential access was cancelled. Retry, or ${fallback.toLowerCase()}`;
     case 'timeout':
@@ -85,7 +104,7 @@ export function credentialErrorMessage(error: CredentialError, provider: LLMProv
 export function missingCredentialMessage(provider: LLMProvider): string {
   return (
     `No API credential is configured for ${provider}.\n` +
-    `For interactive Linux/WSL use, run: repair auth set ${provider}\n` +
+    `For interactive use with a supported secure store, run: repair auth set ${provider}\n` +
     `For non-interactive use, set REPAIR_API_KEY.`
   );
 }
@@ -121,6 +140,11 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024;
 
 export class PassCredentialStore implements CredentialStore {
+  readonly backend: CredentialBackend = {
+    id: 'pass',
+    displayName: 'pass password store',
+    setupHint: 'Initialize pass independently, or set REPAIR_API_KEY.',
+  };
   private readonly env: NodeJS.ProcessEnv;
   private readonly platform: NodeJS.Platform;
   private readonly homedir: string;
@@ -356,9 +380,62 @@ export class PassCredentialStore implements CredentialStore {
   }
 }
 
+class UnsupportedCredentialStore implements CredentialStore {
+  readonly backend: CredentialBackend;
+
+  constructor(platform: NodeJS.Platform) {
+    const platformName =
+      platform === 'darwin' ? 'macOS Keychain' : platform === 'win32' ? 'Windows Credential Manager' : platform;
+    this.backend = {
+      id: `unsupported-${platform}`,
+      displayName: platformName,
+      setupHint: `Native ${platformName} support is not available yet. Set REPAIR_API_KEY.`,
+    };
+  }
+
+  async preflight(): Promise<void> {
+    throw new CredentialError('backend-unavailable', `${this.backend.displayName} support is not available yet.`);
+  }
+
+  async exists(provider: LLMProvider): Promise<boolean> {
+    void provider;
+    await this.preflight();
+    return false;
+  }
+
+  async get(provider: LLMProvider): Promise<string | null> {
+    void provider;
+    await this.preflight();
+    return null;
+  }
+
+  async set(provider: LLMProvider, value: string): Promise<void> {
+    void provider;
+    void value;
+    await this.preflight();
+  }
+
+  async remove(provider: LLMProvider): Promise<boolean> {
+    void provider;
+    await this.preflight();
+    return false;
+  }
+}
+
+export function createCredentialStore(options: CredentialStoreFactoryOptions = {}): CredentialStore {
+  const platform = options.platform || process.platform;
+  if (platform === 'linux') {
+    return new PassCredentialStore({
+      ...options.passOptions,
+      platform,
+    });
+  }
+  return new UnsupportedCredentialStore(platform);
+}
+
 export class CredentialResolver implements CredentialResolverLike {
   constructor(
-    private readonly store: CredentialStore = new PassCredentialStore(),
+    private readonly store: CredentialStore = createCredentialStore(),
     private readonly env: NodeJS.ProcessEnv = process.env,
   ) {}
 
@@ -375,11 +452,13 @@ export class CredentialResolver implements CredentialResolverLike {
     try {
       const value = await this.store.get(provider);
       if (value !== null && value.length > 0) {
-        return { source: 'pass', value };
+        return { source: 'secure-store', value, backend: this.store.backend };
       }
       throw new CredentialError('missing', missingCredentialMessage(provider));
     } catch (error) {
-      if (error instanceof CredentialError) throw error;
+      if (error instanceof CredentialError) {
+        throw new CredentialError(error.code, error.message, error.backend || this.store.backend);
+      }
       throw new CredentialError('backend-failure', 'Secure credential storage failed.');
     }
   }
@@ -394,10 +473,16 @@ export class CredentialResolver implements CredentialResolverLike {
     }
     try {
       await this.store.preflight();
-      return (await this.store.exists(provider)) ? { source: 'pass' } : { source: 'missing', errorCode: 'missing' };
+      return (await this.store.exists(provider))
+        ? { source: 'secure-store', backend: this.store.backend }
+        : { source: 'missing', errorCode: 'missing' };
     } catch (error) {
       const code = error instanceof CredentialError ? error.code : 'backend-failure';
-      return { source: 'unavailable', errorCode: code };
+      return {
+        source: 'unavailable',
+        errorCode: code,
+        backend: this.store.backend,
+      };
     }
   }
 }

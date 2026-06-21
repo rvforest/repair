@@ -4,8 +4,9 @@ import { ConfigManager } from '../config';
 import {
   CredentialError,
   CredentialResolver,
+  CredentialResolverLike,
   CredentialStore,
-  PassCredentialStore,
+  createCredentialStore,
   validateRemoteProvider,
 } from '../credentials';
 import { LLMProvider } from '../types';
@@ -13,7 +14,8 @@ import { LLMProvider } from '../types';
 export interface AuthDependencies {
   configManager?: Pick<ConfigManager, 'load'>;
   store?: CredentialStore;
-  resolver?: CredentialResolver;
+  storeFactory?: () => CredentialStore;
+  resolver?: CredentialResolverLike;
   promptSecret?: (message: string) => Promise<string>;
   promptConfirm?: (message: string) => Promise<boolean>;
   stdout?: Pick<NodeJS.WriteStream, 'write'>;
@@ -31,7 +33,7 @@ export function registerAuthCommands(program: Command, dependencies: AuthDepende
 
   auth
     .command('set [provider]')
-    .description('Store a provider credential in pass')
+    .description('Store a provider credential in the platform secure store')
     .allowExcessArguments(false)
     .option('--force', 'Replace an existing credential without confirmation')
     .action(async (provider: string | undefined, options: { force?: boolean }) => {
@@ -48,7 +50,7 @@ export function registerAuthCommands(program: Command, dependencies: AuthDepende
 
   auth
     .command('remove [provider]')
-    .description('Remove a provider credential from pass')
+    .description('Remove a provider credential from the platform secure store')
     .allowExcessArguments(false)
     .action(async (provider: string | undefined) => {
       await runAuthAction(() => removeCredential(provider, dependencies));
@@ -61,7 +63,7 @@ export async function setCredential(
   dependencies: AuthDependencies = {},
 ): Promise<void> {
   const provider = await resolveProvider(providerArgument, dependencies);
-  const store = dependencies.store || new PassCredentialStore();
+  const store = resolveStore(dependencies);
   const output = dependencies.stdout || process.stdout;
   await store.preflight();
 
@@ -81,7 +83,7 @@ export async function setCredential(
     throw new Error('Credential cannot be empty.');
   }
   await store.set(provider, value);
-  output.write(`Stored credential for ${provider} in pass.\n`);
+  output.write(`Stored credential for ${provider} in ${store.backend.displayName}.\n`);
 }
 
 export async function showCredentialStatus(
@@ -89,7 +91,7 @@ export async function showCredentialStatus(
   dependencies: AuthDependencies = {},
 ): Promise<void> {
   const provider = await resolveProvider(providerArgument, dependencies);
-  const store = dependencies.store || new PassCredentialStore();
+  const store = resolveStore(dependencies);
   const resolver = dependencies.resolver || new CredentialResolver(store);
   const output = dependencies.stdout || process.stdout;
   const status = await resolver.status(provider);
@@ -98,15 +100,19 @@ export async function showCredentialStatus(
     output.write(`${provider}: ${status.source} ${status.maskedValue}\n`);
     return;
   }
-  if (status.source === 'pass') {
-    output.write(`${provider}: pass\n`);
+  if (status.source === 'secure-store') {
+    output.write(`${provider}: secure-store (${status.backend?.displayName || store.backend.displayName})\n`);
     return;
   }
   if (status.source === 'missing') {
     output.write(`${provider}: missing\n`);
     return;
   }
-  output.write(`${provider}: unavailable (${status.errorCode || 'backend-failure'})\n`);
+  output.write(
+    `${provider}: unavailable (${status.backend?.displayName || store.backend.displayName}; ${
+      status.errorCode || 'backend-failure'
+    })\n`,
+  );
 }
 
 export async function removeCredential(
@@ -114,11 +120,13 @@ export async function removeCredential(
   dependencies: AuthDependencies = {},
 ): Promise<void> {
   const provider = await resolveProvider(providerArgument, dependencies);
-  const store = dependencies.store || new PassCredentialStore();
+  const store = resolveStore(dependencies);
   const output = dependencies.stdout || process.stdout;
   const removed = await store.remove(provider);
   output.write(
-    removed ? `Removed credential for ${provider} from pass.\n` : `No stored credential found for ${provider}.\n`,
+    removed
+      ? `Removed credential for ${provider} from ${store.backend.displayName}.\n`
+      : `No stored credential found for ${provider}.\n`,
   );
 }
 
@@ -240,6 +248,10 @@ async function resolveProvider(
     throw new Error('Local providers do not use stored API credentials.');
   }
   return validateRemoteProvider(config.provider);
+}
+
+function resolveStore(dependencies: AuthDependencies): CredentialStore {
+  return dependencies.store || (dependencies.storeFactory || createCredentialStore)();
 }
 
 async function runAuthAction(action: () => Promise<void>): Promise<void> {
