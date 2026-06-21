@@ -43,7 +43,8 @@ repair auth status openai
 The prompt is masked and the entry is stored as `repair/openai`. repAIr does not
 install or initialize `pass`, GPG, or pinentry.
 `repair auth status` checks stored-entry metadata without decrypting the
-credential or invoking pinentry.
+credential or invoking pinentry. It reports the backend-neutral
+`secure-store` source and identifies the selected backend.
 
 For CI, headless systems, macOS, Windows, or Linux systems without `pass`, use
 an environment variable instead:

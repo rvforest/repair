@@ -23,6 +23,11 @@ The system SHALL provide `repair auth set [provider]` to store one API credentia
 
 The system MUST verify backend availability and initialization before prompting for a credential.
 
+#### Scenario: Platform backend selection
+
+- **WHEN** an auth command requires its default credential store
+- **THEN** it obtains the store through the platform-aware credential-store factory rather than constructing a concrete backend directly
+
 #### Scenario: Pass executable is unavailable
 
 - **WHEN** `repair auth set` cannot resolve a `pass` executable
@@ -98,7 +103,7 @@ The system SHALL provide `repair auth status [provider]` and MUST report credent
 #### Scenario: Pass credential is effective
 
 - **WHEN** no nonblank environment credential exists and the provider entry exists
-- **THEN** status reports source `pass` without invoking `pass show`, decrypting the entry, or displaying any part of its value
+- **THEN** status reports source `secure-store`, identifies the `pass password store` backend, and does not invoke `pass show`, decrypt the entry, or display any part of its value
 
 #### Scenario: Credential cannot be accessed
 

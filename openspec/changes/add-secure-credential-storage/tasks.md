@@ -49,3 +49,10 @@
 - [x] 7.1 Reject symlinked, incorrectly owned, or other-user-writable password-store paths and files
 - [x] 7.2 Restore masked-prompt terminal state on stream failures and termination signals
 - [x] 7.3 Report stored credential status through metadata checks without decrypting the credential
+
+## 8. Backend-neutral Extensibility
+
+- [x] 8.1 Add backend metadata and replace concrete `pass` resolution/status sources with `secure-store`
+- [x] 8.2 Add a platform-aware credential-store factory with Linux `pass` and explicit unavailable macOS/Windows stores
+- [x] 8.3 Route resolver and all auth command defaults through the factory
+- [x] 8.4 Add tests proving platform selection and backend-independent resolver/status behavior

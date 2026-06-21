@@ -130,6 +130,9 @@ repair auth status openai
 repAIr stores entries as `repair/<provider>`. It does not install or initialize
 `pass`, GPG, pinentry, or keys. Environment variables remain the supported path
 for CI, macOS, Windows, and systems without an initialized `pass` store.
+Credential orchestration is backend-neutral: Linux/WSL currently selects
+`pass`, while planned macOS Keychain and Windows Credential Manager adapters
+can be added through the platform store factory.
 
 ### OpenAI
 
@@ -201,19 +204,19 @@ repair auth remove [provider]
 - `--debug` - Enable debug output
 - `init <shell>` - Print shell integration for a supported shell
 - `auth set [provider]` - Store or replace a provider credential using a masked prompt
-- `auth status [provider]` - Show the effective credential source; environment values are masked and `pass` entries are checked without decryption
-- `auth remove [provider]` - Remove a provider credential from `pass`
+- `auth status [provider]` - Show `env` or `secure-store` plus the selected backend; environment values are masked and stored entries are checked without decryption
+- `auth remove [provider]` - Remove a provider credential from the selected secure store
 
 ## Credential Resolution and Migration
 
 Remote-provider credentials resolve in this order:
 
 1. A nonblank `REPAIR_API_KEY`
-2. The `pass` entry at `repair/<provider>`
+2. The provider entry in the platform-selected secure store (`pass` on Linux/WSL)
 3. An actionable configuration error
 
 The local provider does not require a credential. Empty or whitespace-only
-`REPAIR_API_KEY` values fall through to `pass`.
+`REPAIR_API_KEY` values fall through to the selected secure store.
 
 Plaintext `apiKey` values in `~/.config/repair/config.json` are no longer
 supported. To migrate:

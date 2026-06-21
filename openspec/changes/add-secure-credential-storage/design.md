@@ -39,12 +39,23 @@ ConfigManager ──> provider/model
 REPAIR_API_KEY ──> CredentialResolver ──> Config with in-memory apiKey
                       ▲
                       │
-                 PassCredentialStore
+             CredentialStoreFactory
+                  ├── Linux/WSL ──> PassCredentialStore
+                  ├── macOS ──────> unavailable until Keychain adapter lands
+                  └── Windows ────> unavailable until Credential Manager adapter lands
 ```
 
 The in-memory `Config.apiKey` can remain as the provider-construction boundary, but it will no longer be populated from JSON. This minimizes provider changes while separating persistent secret handling from ordinary configuration.
 
 Alternative considered: make every LLM provider resolve its own credentials. Rejected because it duplicates precedence and error behavior and makes secret handling harder to audit.
+
+### Select secure storage through one platform-aware factory
+
+Runtime resolution and all auth commands will obtain their default store through `createCredentialStore()`. Stores expose backend-neutral lifecycle operations plus metadata containing a stable backend identifier, display name, and optional setup guidance.
+
+Public resolution/status sources use `secure-store`, not a concrete backend name. Backend metadata is used only for diagnostics and confirmation output. Linux selects `PassCredentialStore`; macOS and Windows select explicit unavailable stores until their native adapters are implemented.
+
+Alternative considered: instantiate `PassCredentialStore` directly and refactor when another backend is added. Rejected because macOS and Windows support is planned, and delaying the selection boundary would require changing resolver, CLI, status, errors, and tests at the same time as introducing security-sensitive native adapters.
 
 ### Use provider-scoped `pass` entries
 
@@ -78,7 +89,7 @@ repAIr will not run `pass init`, create GPG keys, select recipients, or alter ag
 For remote providers:
 
 1. A nonblank `REPAIR_API_KEY`.
-2. The provider entry in `pass`.
+2. The provider entry in the platform-selected secure store.
 3. An actionable missing-credential error.
 
 Whitespace-only environment values are unresolved. The local provider bypasses credential resolution entirely.
@@ -112,7 +123,7 @@ Normal credential access may permit an interactive pinentry within a bounded tim
 
 A secret positional argument or flag will not exist. Non-interactive invocation will fail before prompting unless the operation requires no secret.
 
-`repair auth remove [provider]` will call `pass rm --force` only after confirming the provider entry exists. `repair auth status [provider]` will report effective source (`env`, `pass`, `missing`, or `unavailable`). Environment credentials are masked; stored credentials are reported by existence metadata without invoking `pass show` or decrypting the value.
+`repair auth remove [provider]` will call the selected backend only after confirming the provider entry exists. `repair auth status [provider]` will report effective source (`env`, `secure-store`, `missing`, or `unavailable`) and identify the selected backend by display name. Environment credentials are masked; stored credentials are reported by existence metadata without decrypting the value.
 
 ### Reject legacy plaintext keys
 
@@ -126,6 +137,7 @@ The value will never be printed or automatically passed to `pass`. `ConfigManage
 ## Risks / Trade-offs
 
 - [Linux/WSL-only secure backend in the initial release] → Keep environment variables fully supported and design the store interface for later audited native adapters.
+- [Backend-specific assumptions leak into orchestration] → Route every default store through one factory and expose backend-neutral sources plus backend metadata.
 - [GPG agent or pinentry can block] → Apply bounded execution, process termination, and typed timeout/cancellation errors.
 - [`pass` error text is not a stable API] → Use preflight filesystem checks for executable/store/entry state and keep stderr matching narrow and covered by tests.
 - [Credential status could unnecessarily expose secrets in memory or trigger pinentry] → Use preflight and entry existence checks; never decrypt a stored credential for status.
