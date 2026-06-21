@@ -83,27 +83,15 @@ export async function main(options: MainOptions = {}, dependencies: MainDependen
     }
 
     const config = await configManager.load();
-    let apiKey: string | undefined;
-    if (config.provider !== 'local') {
-      try {
-        apiKey = (await credentialResolver.resolve(config.provider))?.value;
-      } catch (error) {
-        if (error instanceof CredentialError) {
-          throw new Error(credentialErrorMessage(error, config.provider, error.backend));
-        }
-        throw error;
-      }
-    }
 
     // Allow options to override config
     const effectiveConfig: Config = {
       ...config,
-      ...(apiKey && { apiKey }),
       cacheEnabled: options.cacheEnabled !== undefined ? options.cacheEnabled : config.cacheEnabled,
       confirmBeforeSend: options.confirmBeforeSend !== undefined ? options.confirmBeforeSend : config.confirmBeforeSend,
     };
 
-    configManager.validate(effectiveConfig);
+    configManager.validate(effectiveConfig, { requireApiKey: false });
 
     let analysisRequest: AnalysisRequest = {
       ...sessionStore.toAnalysisRequest(sessionBundle, effectiveConfig.includeCwd === true),
@@ -182,7 +170,24 @@ export async function main(options: MainOptions = {}, dependencies: MainDependen
       console.log(formatter.formatInfo('Analyzing error with LLM...'));
     }
 
-    const llmProvider = llmProviderFactory(effectiveConfig);
+    let providerConfig = effectiveConfig;
+    if (effectiveConfig.provider !== 'local') {
+      try {
+        const apiKey = (await credentialResolver.resolve(effectiveConfig.provider))?.value;
+        providerConfig = {
+          ...effectiveConfig,
+          ...(apiKey && { apiKey }),
+        };
+      } catch (error) {
+        if (error instanceof CredentialError) {
+          throw new Error(credentialErrorMessage(error, effectiveConfig.provider, error.backend));
+        }
+        throw error;
+      }
+    }
+    configManager.validate(providerConfig);
+
+    const llmProvider = llmProviderFactory(providerConfig);
     response = securityFilter.sanitizeResponse(await llmProvider.analyze(analysisRequest));
 
     if (effectiveConfig.cacheEnabled && cacheManager) {

@@ -233,6 +233,94 @@ describe('main shell-session flow', () => {
     expect(logSpy).toHaveBeenCalled();
   });
 
+  it('does not resolve credentials when the user declines confirmation', async () => {
+    const resolve = vi.fn();
+    const providerFactory = vi.fn();
+
+    await main(
+      { cacheEnabled: false, confirmBeforeSend: true },
+      {
+        sessionStore: {
+          read: vi.fn().mockResolvedValue({
+            command: 'false',
+            output: 'failed',
+            exitCode: 1,
+            timestamp: '2026-06-20T00:00:00.000Z',
+            truncated: false,
+            redactionsApplied: 0,
+          }),
+          toAnalysisRequest: vi.fn().mockReturnValue({ command: 'false', output: 'failed' }),
+        } as any,
+        configManager: {
+          load: vi.fn().mockResolvedValue({
+            provider: 'openai',
+            cacheEnabled: false,
+            confirmBeforeSend: true,
+          }),
+          validate: vi.fn(),
+        },
+        securityFilter: {
+          sanitizeAnalysisRequest: vi.fn((request) => request),
+          confirmSend: vi.fn().mockResolvedValue(false),
+        } as any,
+        credentialResolver: {
+          resolve,
+          status: vi.fn(),
+        },
+        llmProviderFactory: providerFactory,
+      },
+    );
+
+    expect(resolve).not.toHaveBeenCalled();
+    expect(providerFactory).not.toHaveBeenCalled();
+  });
+
+  it('does not resolve credentials when a cached response is available', async () => {
+    const resolve = vi.fn();
+    const providerFactory = vi.fn();
+
+    await main(
+      { cacheEnabled: true },
+      {
+        sessionStore: {
+          read: vi.fn().mockResolvedValue({
+            command: 'false',
+            output: 'failed',
+            exitCode: 1,
+            timestamp: '2026-06-20T00:00:00.000Z',
+            truncated: false,
+            redactionsApplied: 0,
+          }),
+          toAnalysisRequest: vi.fn().mockReturnValue({ command: 'false', output: 'failed' }),
+        } as any,
+        configManager: {
+          load: vi.fn().mockResolvedValue({
+            provider: 'openai',
+            cacheEnabled: true,
+            confirmBeforeSend: false,
+          }),
+          validate: vi.fn(),
+        },
+        cacheFactory: () => ({
+          get: vi.fn().mockResolvedValue({
+            explanation: 'cached',
+            directFixes: [],
+            debugSteps: [],
+          }),
+          set: vi.fn(),
+        }),
+        credentialResolver: {
+          resolve,
+          status: vi.fn(),
+        },
+        llmProviderFactory: providerFactory,
+      },
+    );
+
+    expect(resolve).not.toHaveBeenCalled();
+    expect(providerFactory).not.toHaveBeenCalled();
+  });
+
   it('resolves a remote provider credential before provider construction without logging it', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const secret = 'runtime-secret-value';
