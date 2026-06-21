@@ -318,6 +318,7 @@ export class PassCredentialStore implements CredentialStore {
       let stderr: Buffer = Buffer.alloc(0);
       let outputExceeded = false;
       let timedOut = false;
+      let forceTimer: NodeJS.Timeout | undefined;
 
       const append = (current: Buffer, chunk: Buffer): Buffer => {
         const remaining = this.maxOutputBytes - current.length;
@@ -344,22 +345,23 @@ export class PassCredentialStore implements CredentialStore {
       const timer = setTimeout(() => {
         timedOut = true;
         child.kill('SIGTERM');
-        const forceTimer = setTimeout(() => child.kill('SIGKILL'), 500);
+        forceTimer = setTimeout(() => child.kill('SIGKILL'), 500);
         forceTimer.unref();
+        reject(new CredentialError('timeout', 'pass operation timed out.'));
       }, this.timeoutMs);
       timer.unref();
 
       child.on('error', () => {
         clearTimeout(timer);
+        if (forceTimer) clearTimeout(forceTimer);
+        if (timedOut) return;
         reject(new CredentialError('backend-unavailable', 'Could not start pass.'));
       });
 
       child.on('close', (code) => {
         clearTimeout(timer);
-        if (timedOut) {
-          reject(new CredentialError('timeout', 'pass operation timed out.'));
-          return;
-        }
+        if (forceTimer) clearTimeout(forceTimer);
+        if (timedOut) return;
         if (outputExceeded) {
           reject(new CredentialError('backend-failure', 'pass output exceeded the safety limit.'));
           return;

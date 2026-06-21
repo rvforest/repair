@@ -176,16 +176,13 @@ describe('PassCredentialStore', () => {
     });
   });
 
-  it('times out and terminates a blocked subprocess', async () => {
+  it('times out even when a blocked subprocess never closes', async () => {
     vi.useFakeTimers();
     const child = new EventEmitter() as any;
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
     child.stdin = new PassThrough();
-    child.kill = vi.fn(() => {
-      queueMicrotask(() => child.emit('close', null));
-      return true;
-    });
+    child.kill = vi.fn(() => true);
     const spawnProcess = vi.fn(() => child);
     const { store } = initializedStore(spawnProcess, { timeoutMs: 10 });
     const result = store.set('openai', 'secret');
@@ -194,6 +191,8 @@ describe('PassCredentialStore', () => {
 
     await assertion;
     expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(child.kill).toHaveBeenCalledWith('SIGKILL');
     vi.useRealTimers();
   });
 });
