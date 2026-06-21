@@ -9,6 +9,7 @@ A CLI tool that uses Large Language Models to explain terminal errors and sugges
 - **Shell Hook Setup**: Generates Bash and Zsh integration with `repair init <shell>`
 - **Multiple LLM Providers**: Support for OpenAI, Anthropic (Claude), Google (Gemini), OpenRouter, and local models
 - **Privacy-Focused**: Automatic secret detection and redaction before sending data to LLMs
+- **Secure Credentials on Linux/WSL**: Stores provider credentials in your existing `pass` password store
 - **Response Caching**: Reduces API costs by caching responses for 24 hours
 - **Beautiful Output**: Formatted, colorized output with clear explanations, direct fixes, and targeted debug steps
 
@@ -37,11 +38,17 @@ npm link
 
 ## Quick Start
 
-1. **Set up your API key**:
+1. **Choose your provider and set up authentication**:
+
+   ```bash
+   export REPAIR_PROVIDER=openai  # or anthropic, google, openrouter, local
+   repair auth set openai         # masked prompt; Linux/WSL with initialized pass
+   ```
+
+   For CI, headless systems, or unsupported platforms, use:
 
    ```bash
    export REPAIR_API_KEY=your-api-key-here
-   export REPAIR_PROVIDER=openai  # or anthropic, google, openrouter, local
    ```
 
 2. **Install shell integration**:
@@ -72,7 +79,7 @@ repAIr can be configured via environment variables or a config file at `~/.confi
 
 ### Environment Variables
 
-- `REPAIR_API_KEY` - API key for your LLM provider (required)
+- `REPAIR_API_KEY` - API key override for CI/non-interactive use; takes precedence over `pass`
 - `REPAIR_PROVIDER` - LLM provider to use (default: `openai`)
   - Options: `openai`, `anthropic`, `google`, `openrouter`, `local`
 - `REPAIR_MODEL` - Specific model to use (optional, uses provider defaults)
@@ -88,7 +95,6 @@ Create `~/.config/repair/config.json`:
 ```json
 {
   "provider": "anthropic",
-  "apiKey": "your-api-key",
   "model": "claude-3-5-sonnet-20241022",
   "cacheEnabled": true,
   "cacheTTL": 86400000,
@@ -102,7 +108,6 @@ Create `~/.config/repair/config.json`:
 **Configuration Options:**
 
 - `provider` (string): LLM provider to use
-- `apiKey` (string): API key for the provider
 - `model` (string, optional): Specific model to use
 - `cacheEnabled` (boolean): Enable response caching (default: true)
 - `cacheTTL` (number): Cache time-to-live in milliseconds (default: 86400000 = 24 hours)
@@ -112,6 +117,19 @@ Create `~/.config/repair/config.json`:
 - `maxPersistedOutputBytes` (number): Bound sanitized output retained for analysis (default: 16384)
 
 ## Supported LLM Providers
+
+On Linux and WSL, initialize [`pass`](https://www.passwordstore.org/) with your
+GPG key, then store a credential once:
+
+```bash
+pass init <your-gpg-id>
+repair auth set openai
+repair auth status openai
+```
+
+repAIr stores entries as `repair/<provider>`. It does not install or initialize
+`pass`, GPG, pinentry, or keys. Environment variables remain the supported path
+for CI, macOS, Windows, and systems without an initialized `pass` store.
 
 ### OpenAI
 
@@ -168,6 +186,9 @@ Note: Local models require an OpenAI-compatible API endpoint.
 ```bash
 repair [options]
 repair init <bash|zsh>
+repair auth set [provider] [--force]
+repair auth status [provider]
+repair auth remove [provider]
 ```
 
 **Options:**
@@ -179,6 +200,28 @@ repair init <bash|zsh>
 - `--verbose` - Enable verbose output for troubleshooting
 - `--debug` - Enable debug output
 - `init <shell>` - Print shell integration for a supported shell
+- `auth set [provider]` - Store or replace a provider credential using a masked prompt
+- `auth status [provider]` - Show the effective credential source; environment values are masked and `pass` entries are checked without decryption
+- `auth remove [provider]` - Remove a provider credential from `pass`
+
+## Credential Resolution and Migration
+
+Remote-provider credentials resolve in this order:
+
+1. A nonblank `REPAIR_API_KEY`
+2. The `pass` entry at `repair/<provider>`
+3. An actionable configuration error
+
+The local provider does not require a credential. Empty or whitespace-only
+`REPAIR_API_KEY` values fall through to `pass`.
+
+Plaintext `apiKey` values in `~/.config/repair/config.json` are no longer
+supported. To migrate:
+
+1. Run `repair auth set <provider>` on Linux/WSL, or configure `REPAIR_API_KEY`.
+2. Remove the `apiKey` property from the JSON file.
+
+repAIr never migrates or displays the legacy plaintext value automatically.
 
 ## Usage Examples
 
@@ -290,13 +333,17 @@ source ~/.zshrc
 
 ### "No API key configured"
 
-Set your API key via environment variable:
+On Linux/WSL with an initialized `pass` store:
+
+```bash
+repair auth set <provider>
+```
+
+For CI, headless use, or unsupported platforms:
 
 ```bash
 export REPAIR_API_KEY=your-key-here
 ```
-
-Or create a config file at `~/.config/repair/config.json`.
 
 ### "No captured command output is available yet"
 

@@ -31,7 +31,22 @@ npm link
 
 ## Configuration
 
-Set up your API key for your preferred LLM provider:
+Set your provider, then store its credential once in `pass` on Linux or WSL:
+
+```bash
+export REPAIR_PROVIDER=openai
+pass init <your-gpg-id> # only if your password store is not already initialized
+repair auth set openai
+repair auth status openai
+```
+
+The prompt is masked and the entry is stored as `repair/openai`. repAIr does not
+install or initialize `pass`, GPG, or pinentry.
+`repair auth status` checks stored-entry metadata without decrypting the
+credential or invoking pinentry.
+
+For CI, headless systems, macOS, Windows, or Linux systems without `pass`, use
+an environment variable instead:
 
 ### OpenAI (GPT-4)
 
@@ -154,16 +169,19 @@ repair --help
 
 ## Persistent Configuration
 
-Create `~/.config/repair/config.json` to avoid setting environment variables each time:
+Create `~/.config/repair/config.json` for non-secret settings:
 
 ```json
 {
   "provider": "anthropic",
-  "apiKey": "your-api-key-here",
   "model": "claude-3-5-sonnet-20241022",
   "cacheEnabled": true
 }
 ```
+
+Do not store `apiKey` in this file. If an older config contains one, run
+`repair auth set <provider>` or set `REPAIR_API_KEY`, then remove the `apiKey`
+property manually.
 
 ## Troubleshooting
 
@@ -177,7 +195,19 @@ eval "$(repair init zsh)"
 
 ### "No API key configured"
 
-Set the REPAIR_API_KEY environment variable or create a config file.
+On Linux/WSL, run `repair auth set <provider>` with an initialized `pass`
+store. Otherwise set `REPAIR_API_KEY`.
+
+### "The pass password store is not initialized"
+
+Configure `pass` and GPG independently:
+
+```bash
+pass init <your-gpg-id>
+repair auth set <provider>
+```
+
+Alternatively, use `REPAIR_API_KEY`.
 
 ### "No captured command output is available yet"
 
