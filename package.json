@@ -10,6 +10,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest",
+    "test:ci": "vitest run",
     "lint": "eslint src --ext .ts --max-warnings 0",
     "format": "prettier --write 'src/**/*.ts'"
   },
