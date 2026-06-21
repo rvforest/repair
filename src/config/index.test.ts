@@ -102,18 +102,19 @@ describe('ConfigManager', () => {
   });
 
   describe('load', () => {
-    it('should load from environment variables', async () => {
-      process.env.REPAIR_API_KEY = 'env-key';
+    it('should load non-secret settings from environment variables', async () => {
       process.env.REPAIR_PROVIDER = 'anthropic';
 
       const config = await configManager.load();
 
-      expect(config.apiKey).toBe('env-key');
+      expect(config.apiKey).toBeUndefined();
       expect(config.provider).toBe('anthropic');
     });
 
-    it('should throw error when no API key is configured', async () => {
-      await expect(configManager.load()).rejects.toThrow('No API key configured');
+    it('does not resolve credentials during config loading', async () => {
+      await expect(configManager.load()).resolves.toMatchObject({
+        provider: 'openai',
+      });
     });
 
     it('loads capture-related config without requiring an API key', async () => {
@@ -135,5 +136,35 @@ describe('ConfigManager', () => {
       expect(fs.statSync(configDir).mode & 0o777).toBe(0o700);
       expect(fs.statSync(testConfigPath).mode & 0o777).toBe(0o600);
     });
+
+    it('rejects attempts to save plaintext API keys', async () => {
+      await expect(configManager.save({ apiKey: 'never-write-this' })).rejects.toThrow('Refusing to save apiKey');
+      expect(fs.existsSync(testConfigPath)).toBe(false);
+    });
+
+    it('removes legacy plaintext keys when saving non-secret settings', async () => {
+      fs.mkdirSync(path.dirname(testConfigPath), { recursive: true });
+      fs.writeFileSync(testConfigPath, JSON.stringify({ provider: 'openai', apiKey: 'legacy' }));
+      await configManager.save({ model: 'gpt-test' });
+      expect(JSON.parse(fs.readFileSync(testConfigPath, 'utf8'))).toEqual({
+        provider: 'openai',
+        model: 'gpt-test',
+      });
+    });
+  });
+
+  it('rejects legacy plaintext keys for credential-requiring loads without displaying them', async () => {
+    fs.mkdirSync(path.dirname(testConfigPath), { recursive: true });
+    fs.writeFileSync(testConfigPath, JSON.stringify({ provider: 'openai', apiKey: 'legacy-secret' }));
+    const error = await configManager.load().catch((value) => value as Error);
+    expect(error.message).toContain('Plaintext apiKey');
+    expect(error.message).not.toContain('legacy-secret');
+  });
+
+  it('ignores legacy plaintext keys during capture-time loading', async () => {
+    fs.mkdirSync(path.dirname(testConfigPath), { recursive: true });
+    fs.writeFileSync(testConfigPath, JSON.stringify({ provider: 'openai', apiKey: 'legacy-secret' }));
+    const config = await configManager.load({ requireApiKey: false });
+    expect(config.apiKey).toBeUndefined();
   });
 });

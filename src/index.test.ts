@@ -17,17 +17,24 @@ describe('main shell-session flow', () => {
 
   it('shows shell integration guidance when no integration is configured', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const missingSessionError = { name: 'SessionError', code: 'missing', message: 'missing' };
+    const missingSessionError = {
+      name: 'SessionError',
+      code: 'missing',
+      message: 'missing',
+    };
 
     let thrownError: Error | undefined;
 
     try {
-      await main({}, {
-        sessionStore: {
-          read: vi.fn().mockRejectedValue(missingSessionError),
-          toAnalysisRequest: vi.fn(),
-        } as any,
-      });
+      await main(
+        {},
+        {
+          sessionStore: {
+            read: vi.fn().mockRejectedValue(missingSessionError),
+            toAnalysisRequest: vi.fn(),
+          } as any,
+        },
+      );
     } catch (error) {
       thrownError = error as Error;
     }
@@ -42,15 +49,22 @@ describe('main shell-session flow', () => {
     process.env.REPAIR_SHELL_INTEGRATION = '1';
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const missingSessionError = { name: 'SessionError', code: 'missing', message: 'missing' };
+    const missingSessionError = {
+      name: 'SessionError',
+      code: 'missing',
+      message: 'missing',
+    };
 
     await expect(
-      main({}, {
-        sessionStore: {
-          read: vi.fn().mockRejectedValue(missingSessionError),
-          toAnalysisRequest: vi.fn(),
-        } as any,
-      }),
+      main(
+        {},
+        {
+          sessionStore: {
+            read: vi.fn().mockRejectedValue(missingSessionError),
+            toAnalysisRequest: vi.fn(),
+          } as any,
+        },
+      ),
     ).rejects.toThrow('No captured command output is available yet');
 
     expect(errorSpy).toHaveBeenCalled();
@@ -61,12 +75,15 @@ describe('main shell-session flow', () => {
     process.env.REPAIR_LAST_CAPTURE_STATUS = 'success';
 
     await expect(
-      main({}, {
-        sessionStore: {
-          read: vi.fn().mockRejectedValue({ code: 'missing' }),
-          toAnalysisRequest: vi.fn(),
-        } as any,
-      }),
+      main(
+        {},
+        {
+          sessionStore: {
+            read: vi.fn().mockRejectedValue({ code: 'missing' }),
+            toAnalysisRequest: vi.fn(),
+          } as any,
+        },
+      ),
     ).rejects.toThrow('No failed command is currently available for analysis');
   });
 
@@ -75,12 +92,15 @@ describe('main shell-session flow', () => {
     process.env.REPAIR_LAST_CAPTURE_STATUS = 'skipped:sudo';
 
     await expect(
-      main({}, {
-        sessionStore: {
-          read: vi.fn().mockRejectedValue({ code: 'missing' }),
-          toAnalysisRequest: vi.fn(),
-        } as any,
-      }),
+      main(
+        {},
+        {
+          sessionStore: {
+            read: vi.fn().mockRejectedValue({ code: 'missing' }),
+            toAnalysisRequest: vi.fn(),
+          } as any,
+        },
+      ),
     ).rejects.toThrow('excluded from capture by default');
   });
 
@@ -112,7 +132,11 @@ describe('main shell-session flow', () => {
           toAnalysisRequest: vi.fn().mockReturnValue({
             command: 'npm test',
             output: 'Error: boom',
-            shellContext: { exitCode: 1, shell: 'zsh', timestamp: '2026-04-01T12:00:00.000Z' },
+            shellContext: {
+              exitCode: 1,
+              shell: 'zsh',
+              timestamp: '2026-04-01T12:00:00.000Z',
+            },
           }),
         } as any,
         configManager: {
@@ -200,10 +224,57 @@ describe('main shell-session flow', () => {
       expect.objectContaining({
         command: expect.stringContaining('[REDACTED:'),
         output: expect.stringContaining('[REDACTED:'),
-        shellContext: expect.objectContaining({ timestamp: '2026-04-01T12:00:00.000Z' }),
+        shellContext: expect.objectContaining({
+          timestamp: '2026-04-01T12:00:00.000Z',
+        }),
       }),
     );
     expect(cacheSet).toHaveBeenCalled();
     expect(logSpy).toHaveBeenCalled();
+  });
+
+  it('resolves a remote provider credential before provider construction without logging it', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const secret = 'runtime-secret-value';
+    const providerFactory = vi.fn().mockReturnValue({
+      analyze: vi.fn().mockResolvedValue({
+        explanation: 'ok',
+        directFixes: [],
+        debugSteps: [],
+      }),
+    });
+
+    await main(
+      { cacheEnabled: false, verbose: true },
+      {
+        sessionStore: {
+          read: vi.fn().mockResolvedValue({
+            command: 'false',
+            output: 'failed',
+            exitCode: 1,
+            timestamp: '2026-06-20T00:00:00.000Z',
+            truncated: false,
+            redactionsApplied: 0,
+          }),
+          toAnalysisRequest: vi.fn().mockReturnValue({ command: 'false', output: 'failed' }),
+        } as any,
+        configManager: {
+          load: vi.fn().mockResolvedValue({
+            provider: 'openai',
+            cacheEnabled: false,
+            confirmBeforeSend: false,
+          }),
+          validate: vi.fn(),
+        },
+        credentialResolver: {
+          resolve: vi.fn().mockResolvedValue({ source: 'pass', value: secret }),
+          status: vi.fn(),
+        },
+        llmProviderFactory: providerFactory,
+      },
+    );
+
+    expect(providerFactory).toHaveBeenCalledWith(expect.objectContaining({ apiKey: secret }));
+    expect(logSpy.mock.calls.flat().join(' ')).not.toContain(secret);
   });
 });
