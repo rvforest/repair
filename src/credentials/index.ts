@@ -342,6 +342,13 @@ export class PassCredentialStore implements CredentialStore {
         if (outputExceeded) child.kill('SIGTERM');
       });
 
+      child.stdin.on('error', () => {
+        clearTimeout(timer);
+        if (forceTimer) clearTimeout(forceTimer);
+        if (timedOut) return;
+        reject(new CredentialError('backend-failure', 'Could not send input to pass.'));
+      });
+
       const timer = setTimeout(() => {
         timedOut = true;
         child.kill('SIGTERM');

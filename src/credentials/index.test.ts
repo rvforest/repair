@@ -92,6 +92,24 @@ describe('PassCredentialStore', () => {
     expect(input).toBe('super-secret\n');
   });
 
+  it('handles pass closing stdin before consuming the credential', async () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
+    child.kill = vi.fn(() => true);
+    child.stdin.end = vi.fn(() => {
+      queueMicrotask(() => child.stdin.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' })));
+      return child.stdin;
+    });
+    const { store } = initializedStore(vi.fn(() => child));
+
+    await expect(store.set('openai', 'super-secret')).rejects.toMatchObject({
+      code: 'backend-failure',
+      message: 'Could not send input to pass.',
+    });
+  });
+
   it('retrieves provider-scoped credentials', async () => {
     const spawnProcess = vi.fn(() => fakeChild(0, 'stored-secret\n'));
     const { dir, store } = initializedStore(spawnProcess);
