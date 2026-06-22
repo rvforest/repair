@@ -128,6 +128,29 @@ describe('PassCredentialStore', () => {
 
     await expect(store.preflight()).rejects.toMatchObject({
       code: 'backend-failure',
+      message: expect.stringContaining(`chmod go-w -- '${dir}'`),
+    });
+  });
+
+  it('reports every writable password-store path component in one actionable error', async () => {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'repair-pass-permissions-test-'));
+    tempDirs.push(parent);
+    const intermediate = path.join(parent, 'shared');
+    const storeDir = path.join(intermediate, 'pass');
+    fs.mkdirSync(storeDir, { recursive: true, mode: 0o770 });
+    fs.chmodSync(intermediate, 0o770);
+    fs.chmodSync(storeDir, 0o770);
+    fs.writeFileSync(path.join(storeDir, '.gpg-id'), 'test-key\n', { mode: 0o600 });
+    const store = new PassCredentialStore({
+      platform: 'linux',
+      executablePath: '/usr/bin/pass',
+      env: { PASSWORD_STORE_DIR: storeDir },
+      spawnProcess: vi.fn(),
+    });
+
+    await expect(store.preflight()).rejects.toMatchObject({
+      code: 'backend-failure',
+      message: expect.stringContaining(`chmod go-w -- '${storeDir}' '${intermediate}'`),
     });
   });
 

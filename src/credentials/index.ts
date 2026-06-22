@@ -243,6 +243,7 @@ export class PassCredentialStore implements CredentialStore {
   private validateStoreDirectory(): void {
     const storeDir = this.storeDir;
     const pathComponents: string[] = [];
+    const writableComponents: string[] = [];
     let current = storeDir;
 
     pathComponents.push(current);
@@ -261,11 +262,24 @@ export class PassCredentialStore implements CredentialStore {
       const isStoreRoot = current === storeDir;
       const isSharedStickyAncestor = !isStoreRoot && (stats.mode & 0o1000) !== 0;
       if ((stats.mode & 0o022) !== 0 && !isSharedStickyAncestor) {
-        throw new CredentialError('backend-failure', 'Password store path is writable by other users.');
+        writableComponents.push(current);
       }
       if (isStoreRoot && this.uid !== undefined && stats.uid !== this.uid) {
-        throw new CredentialError('backend-failure', 'Password store is not owned by the current user.');
+        throw new CredentialError(
+          'backend-failure',
+          `Password store is not owned by the current user: ${formatPath(current)}`,
+        );
       }
+    }
+
+    if (writableComponents.length > 0) {
+      const paths = writableComponents.map((component) => `  - ${formatPath(component)}`).join('\n');
+      const chmodArguments = writableComponents.map(shellQuote).join(' ');
+      throw new CredentialError(
+        'backend-failure',
+        `Password store path contains directories writable by group or other users:\n${paths}\n` +
+          `Remove those write permissions with:\n  chmod go-w -- ${chmodArguments}`,
+      );
     }
   }
 
@@ -275,10 +289,17 @@ export class PassCredentialStore implements CredentialStore {
       throw new CredentialError('backend-failure', 'Credential directory is not a trusted directory.');
     }
     if (this.uid !== undefined && stats.uid !== this.uid) {
-      throw new CredentialError('backend-failure', 'Credential directory is not owned by the current user.');
+      throw new CredentialError(
+        'backend-failure',
+        `Credential directory is not owned by the current user: ${formatPath(dirPath)}`,
+      );
     }
     if ((stats.mode & 0o022) !== 0) {
-      throw new CredentialError('backend-failure', 'Credential directory is writable by other users.');
+      throw new CredentialError(
+        'backend-failure',
+        `Credential directory is writable by group or other users: ${formatPath(dirPath)}\n` +
+          `Remove those write permissions with:\n  chmod go-w -- ${shellQuote(dirPath)}`,
+      );
     }
   }
 
@@ -288,10 +309,17 @@ export class PassCredentialStore implements CredentialStore {
       throw new CredentialError('backend-failure', 'Credential file is not a trusted regular file.');
     }
     if (this.uid !== undefined && stats.uid !== this.uid) {
-      throw new CredentialError('backend-failure', 'Credential file is not owned by the current user.');
+      throw new CredentialError(
+        'backend-failure',
+        `Credential file is not owned by the current user: ${formatPath(filePath)}`,
+      );
     }
     if ((stats.mode & 0o022) !== 0) {
-      throw new CredentialError('backend-failure', 'Credential file is writable by other users.');
+      throw new CredentialError(
+        'backend-failure',
+        `Credential file is writable by group or other users: ${formatPath(filePath)}\n` +
+          `Remove those write permissions with:\n  chmod go-w -- ${shellQuote(filePath)}`,
+      );
     }
   }
 
@@ -515,6 +543,14 @@ function isMissingFileError(error: unknown): boolean {
   return Boolean(
     error && typeof error === 'object' && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT',
   );
+}
+
+function formatPath(filePath: string): string {
+  return JSON.stringify(filePath);
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 function classifyPassFailure(stderr: string): CredentialError {
