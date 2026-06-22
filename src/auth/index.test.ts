@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { EventEmitter } from 'events';
 import { describe, expect, it, vi } from 'vitest';
+import { REMOTE_PROVIDERS } from '../credentials';
 import { promptMasked, registerAuthCommands, removeCredential, setCredential, showCredentialStatus } from './index';
 
 const testBackend = {
@@ -178,6 +179,20 @@ describe('auth commands', () => {
     ).rejects.toMatchObject({ code: 'commander.excessArguments' });
     expect(store.preflight).not.toHaveBeenCalled();
     expect(store.set).not.toHaveBeenCalled();
+  });
+
+  it.each(['set', 'status', 'remove'])('lists remote providers in auth %s help', (subcommand) => {
+    const program = new Command();
+    registerAuthCommands(program);
+
+    const auth = program.commands.find((command) => command.name() === 'auth');
+    const command = auth?.commands.find((candidate) => candidate.name() === subcommand);
+    const help = command?.helpInformation();
+    const normalizedHelp = help?.replace(/\s+/g, ' ');
+
+    expect(normalizedHelp).toContain(REMOTE_PROVIDERS.join(', '));
+    expect(normalizedHelp).toContain('defaults to the configured provider');
+    expect(normalizedHelp).not.toContain('local');
   });
 });
 

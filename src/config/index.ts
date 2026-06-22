@@ -6,7 +6,7 @@ import {
   MAX_ALLOWED_CAPTURE_BYTES,
   MAX_ALLOWED_PERSISTED_OUTPUT_BYTES,
 } from '../security';
-import { Config, LLMProvider } from '../types';
+import { Config, LLM_PROVIDERS, LLMProvider } from '../types';
 import { ensurePrivateDirectory, pathExists, readTextFileSafe, writeTextFileAtomic } from '../storage';
 
 const DEFAULT_CONFIG: Config = {
@@ -105,10 +105,8 @@ export class ConfigManager {
   }
 
   validate(config: Config, options: { requireApiKey?: boolean } = {}): void {
-    const validProviders: LLMProvider[] = ['openai', 'anthropic', 'google', 'openrouter', 'local'];
-
-    if (!validProviders.includes(config.provider)) {
-      throw new Error(`Invalid provider: ${config.provider}. Valid providers are: ${validProviders.join(', ')}`);
+    if (!LLM_PROVIDERS.includes(config.provider)) {
+      throw new Error(`Invalid provider: ${config.provider}. Valid providers are: ${LLM_PROVIDERS.join(', ')}`);
     }
 
     if (options.requireApiKey !== false && !config.apiKey && config.provider !== 'local') {

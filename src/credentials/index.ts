@@ -2,9 +2,11 @@ import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { LLMProvider } from '../types';
+import { LLM_PROVIDERS, LLMProvider, RemoteLLMProvider } from '../types';
 
-export const REMOTE_PROVIDERS: readonly LLMProvider[] = ['openai', 'anthropic', 'google', 'openrouter'];
+export const REMOTE_PROVIDERS: readonly RemoteLLMProvider[] = LLM_PROVIDERS.filter(
+  (provider): provider is RemoteLLMProvider => provider !== 'local',
+);
 
 export type CredentialSource = 'env' | 'secure-store' | 'missing' | 'unavailable';
 export type CredentialErrorCode =
@@ -64,11 +66,11 @@ export interface CredentialStoreFactoryOptions {
   passOptions?: PassCredentialStoreOptions;
 }
 
-export function validateRemoteProvider(provider: string): LLMProvider {
-  if (!REMOTE_PROVIDERS.includes(provider as LLMProvider)) {
+export function validateRemoteProvider(provider: string): RemoteLLMProvider {
+  if (!REMOTE_PROVIDERS.includes(provider as RemoteLLMProvider)) {
     throw new Error(`Invalid remote provider: ${provider}. Valid providers are: ${REMOTE_PROVIDERS.join(', ')}`);
   }
-  return provider as LLMProvider;
+  return provider as RemoteLLMProvider;
 }
 
 export function maskCredential(value: string): string {

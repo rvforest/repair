@@ -6,10 +6,14 @@ import {
   CredentialResolver,
   CredentialResolverLike,
   CredentialStore,
+  REMOTE_PROVIDERS,
   createCredentialStore,
   validateRemoteProvider,
 } from '../credentials';
 import { LLMProvider } from '../types';
+
+const PROVIDER_ARGUMENT_DESCRIPTION =
+  `Remote provider (${REMOTE_PROVIDERS.join(', ')}); defaults to the configured provider`;
 
 export interface AuthDependencies {
   configManager?: Pick<ConfigManager, 'load'>;
@@ -32,8 +36,9 @@ export function registerAuthCommands(program: Command, dependencies: AuthDepende
   const auth = program.command('auth').description('Manage secure API credentials');
 
   auth
-    .command('set [provider]')
+    .command('set')
     .description('Store a provider credential in the platform secure store')
+    .argument('[provider]', PROVIDER_ARGUMENT_DESCRIPTION)
     .allowExcessArguments(false)
     .option('--force', 'Replace an existing credential without confirmation')
     .action(async (provider: string | undefined, options: { force?: boolean }) => {
@@ -41,16 +46,18 @@ export function registerAuthCommands(program: Command, dependencies: AuthDepende
     });
 
   auth
-    .command('status [provider]')
+    .command('status')
     .description('Show credential availability and effective source')
+    .argument('[provider]', PROVIDER_ARGUMENT_DESCRIPTION)
     .allowExcessArguments(false)
     .action(async (provider: string | undefined) => {
       await runAuthAction(() => showCredentialStatus(provider, dependencies));
     });
 
   auth
-    .command('remove [provider]')
+    .command('remove')
     .description('Remove a provider credential from the platform secure store')
+    .argument('[provider]', PROVIDER_ARGUMENT_DESCRIPTION)
     .allowExcessArguments(false)
     .action(async (provider: string | undefined) => {
       await runAuthAction(() => removeCredential(provider, dependencies));
