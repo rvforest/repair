@@ -15,9 +15,9 @@ The system SHALL report an authentication inventory when `repair auth status` is
 - **WHEN** the inventory checks secure-store credentials
 - **THEN** it uses entry-existence metadata without decrypting credential values or invoking interactive pinentry
 
-#### Scenario: Concurrent inventory checks
+#### Scenario: Bounded inventory checks
 - **WHEN** the inventory checks multiple remote providers
-- **THEN** the provider status checks are initiated concurrently
+- **THEN** each provider status check remains metadata-only and does not wait for credential decryption or interactive authentication
 
 ### Requirement: Active provider identification
 The system MUST identify which provider is active in the authentication inventory.

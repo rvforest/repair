@@ -26,7 +26,7 @@ The system MUST verify backend availability and initialization before prompting 
 #### Scenario: Platform backend selection
 
 - **WHEN** an auth command requires its default credential store
-- **THEN** it obtains the store through the platform-aware credential-store factory rather than constructing a concrete backend directly
+- **THEN** it uses the platform-selected credential backend consistently for setup, status, and removal
 
 #### Scenario: Pass executable is unavailable
 
@@ -55,7 +55,7 @@ The system MUST read credentials interactively with terminal echo disabled and M
 #### Scenario: Interactive credential entry
 
 - **WHEN** the command prompts for a credential in a terminal
-- **THEN** typed credential characters are not echoed and the credential is sent to `pass` through standard input
+- **THEN** typed credential characters are not echoed and the credential is submitted without appearing in command arguments or terminal output
 
 #### Scenario: Non-interactive credential setup
 
@@ -112,7 +112,7 @@ The system SHALL provide `repair auth status [provider]` and MUST report credent
 
 ### Requirement: Credential removal
 
-The system SHALL provide `repair auth remove [provider]` to remove the provider-scoped entry from `pass`.
+The system SHALL provide `repair auth remove [provider]` to remove the provider-scoped secure-store entry.
 
 #### Scenario: Remove stored credential
 
@@ -124,24 +124,24 @@ The system SHALL provide `repair auth remove [provider]` to remove the provider-
 - **WHEN** no stored entry exists for the selected provider
 - **THEN** the command reports that no credential was stored and exits without treating the condition as an internal failure
 
-### Requirement: Secret-safe subprocess execution
+### Requirement: Secret-safe backend execution
 
-The system MUST invoke `pass` without a shell, MUST keep credential values out of arguments and environment variables, and MUST bound subprocess execution and output.
+The system MUST execute credential-backend operations without exposing credential values through shells, process arguments, environment variables, logs, or unbounded backend output.
 
-#### Scenario: Store subprocess invocation
+#### Scenario: Store backend invocation
 
 - **WHEN** the system stores a credential
-- **THEN** it invokes an absolute `pass` executable with fixed arguments and sends the credential only through child stdin
+- **THEN** it sends the credential only through a non-argument secret channel
 
 #### Scenario: Backend timeout
 
-- **WHEN** a `pass` or GPG operation exceeds the configured finite timeout
+- **WHEN** a credential-backend operation exceeds the configured finite timeout
 - **THEN** the system terminates the child process and returns a typed timeout error without exposing captured output
 
 #### Scenario: Backend emits sensitive output
 
 - **WHEN** a backend operation writes stdout or stderr
-- **THEN** the system treats successful retrieval stdout as secret material and does not echo raw subprocess output in logs or user-facing errors
+- **THEN** the system treats successful retrieval output as secret material and does not echo raw backend output in logs or user-facing errors
 
 ### Requirement: Plaintext configuration is rejected
 

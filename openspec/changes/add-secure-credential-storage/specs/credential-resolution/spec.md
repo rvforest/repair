@@ -24,24 +24,24 @@ For remote providers, the system MUST resolve credentials in the order nonblank 
 - **WHEN** neither a nonblank environment value nor a stored provider credential resolves
 - **THEN** the operation exits nonzero with instructions for both `repair auth set <provider>` and `REPAIR_API_KEY`
 
-### Requirement: Backend-neutral credential orchestration
+### Requirement: Backend-neutral credential behavior
 
-The system MUST select default credential storage through one platform-aware factory and MUST keep resolver and auth workflows independent of concrete backend implementations.
+The system MUST provide consistent credential resolution and auth-command behavior across supported and unsupported credential backends.
 
-#### Scenario: Linux backend selection
+#### Scenario: Linux secure storage
 
-- **WHEN** the factory runs on Linux or WSL
-- **THEN** it returns the `pass` credential-store adapter
+- **WHEN** credential resolution runs on Linux or WSL with an initialized supported secure store
+- **THEN** provider-scoped secure-store credentials are available for resolution
 
-#### Scenario: Planned native backend is not implemented
+#### Scenario: Unsupported native backend
 
-- **WHEN** the factory runs on macOS or native Windows before its native adapter is available
-- **THEN** it returns an explicit unavailable store with platform-specific metadata and recommends `REPAIR_API_KEY`
+- **WHEN** credential resolution runs on a platform without a supported secure-storage backend
+- **THEN** the system reports secure storage as unavailable and recommends `REPAIR_API_KEY`
 
-#### Scenario: Future native adapter
+#### Scenario: Future native backend
 
-- **WHEN** a macOS Keychain or Windows Credential Manager adapter is added
-- **THEN** only the factory mapping and backend implementation need to change; credential resolution and auth command orchestration remain unchanged
+- **WHEN** a supported native secure-storage backend is available for the current platform
+- **THEN** credential resolution follows the same precedence and provider-isolation rules as other backends
 
 ### Requirement: Provider isolation
 
@@ -83,7 +83,7 @@ The system MUST distinguish a missing credential from unavailable, cancelled, ti
 #### Scenario: Secure storage times out
 
 - **WHEN** provider credential retrieval exceeds the finite timeout
-- **THEN** the system reports a secure-storage timeout without printing raw subprocess output
+- **THEN** the system reports a secure-storage timeout without printing raw backend output
 
 #### Scenario: Backend is unavailable
 
