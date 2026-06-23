@@ -124,7 +124,7 @@ GPG key, then store a credential once:
 ```bash
 pass init <your-gpg-id>
 repair auth set openai
-repair auth status openai
+repair auth status
 ```
 
 repAIr stores entries as `repair/<provider>`. It does not install or initialize
@@ -204,7 +204,8 @@ repair auth remove [provider]
 - `--debug` - Enable debug output
 - `init <shell>` - Print shell integration for a supported shell
 - `auth set [provider]` - Store or replace a provider credential using a masked prompt
-- `auth status [provider]` - Show `env` or `secure-store` plus the selected backend; environment values are masked and stored entries are checked without decryption
+- `auth status` - Inventory every remote provider, mark the active provider, and show `env`, `secure-store`, `missing`, or `unavailable`
+- `auth status <provider>` - Show detailed status for one provider
 - `auth remove [provider]` - Remove a provider credential from the selected secure store
 
 ## Credential Resolution and Migration
@@ -213,6 +214,23 @@ Remote-provider credentials resolve in this order:
 
 1. A nonblank `REPAIR_API_KEY`
 2. The provider entry in the platform-selected secure store (`pass` on Linux/WSL)
+
+`repair auth status` lists all remote providers so credentials already
+configured on a machine are visible. Stored entries are checked through
+metadata without decryption or pinentry. The unscoped `REPAIR_API_KEY` is
+reported only for the active provider.
+
+```text
+Provider          Credential
+openai (active)   missing
+anthropic         missing
+google            missing
+openrouter        secure-store (pass password store)
+```
+
+Use `repair auth status <provider>` for the existing single-provider output.
+After storing a credential for an inactive provider, repAIr prints a note that
+the provider must be selected before the credential will be used.
 3. An actionable configuration error
 
 The local provider does not require a credential. Empty or whitespace-only

@@ -37,14 +37,16 @@ Set your provider, then store its credential once in `pass` on Linux or WSL:
 export REPAIR_PROVIDER=openai
 pass init <your-gpg-id> # only if your password store is not already initialized
 repair auth set openai
-repair auth status openai
+repair auth status
 ```
 
 The prompt is masked and the entry is stored as `repair/openai`. repAIr does not
 install or initialize `pass`, GPG, or pinentry.
-`repair auth status` checks stored-entry metadata without decrypting the
-credential or invoking pinentry. It reports the backend-neutral
-`secure-store` source and identifies the selected backend.
+`repair auth status` inventories every remote provider and marks the active
+provider. It checks stored-entry metadata without decrypting credentials or
+invoking pinentry. Use `repair auth status <provider>` to inspect only one
+provider. Because `REPAIR_API_KEY` is not provider-scoped, inventory output
+associates it only with the active provider.
 
 For CI, headless systems, macOS, Windows, or Linux systems without `pass`, use
 an environment variable instead:
