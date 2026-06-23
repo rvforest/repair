@@ -30,6 +30,10 @@ export interface CredentialStatus {
   backend?: CredentialBackend;
 }
 
+export interface CredentialStatusOptions {
+  includeEnvironment?: boolean;
+}
+
 export interface CredentialBackend {
   id: string;
   displayName: string;
@@ -58,7 +62,7 @@ export interface CredentialStore {
 
 export interface CredentialResolverLike {
   resolve(provider: LLMProvider): Promise<ResolvedCredential | null>;
-  status(provider: LLMProvider): Promise<CredentialStatus>;
+  status(provider: LLMProvider, options?: CredentialStatusOptions): Promise<CredentialStatus>;
 }
 
 export interface CredentialStoreFactoryOptions {
@@ -502,12 +506,12 @@ export class CredentialResolver implements CredentialResolverLike {
     }
   }
 
-  async status(provider: LLMProvider): Promise<CredentialStatus> {
+  async status(provider: LLMProvider, options: CredentialStatusOptions = {}): Promise<CredentialStatus> {
     if (provider === 'local') {
       return { source: 'missing' };
     }
     const envValue = this.env.REPAIR_API_KEY;
-    if (envValue && envValue.trim()) {
+    if (options.includeEnvironment !== false && envValue && envValue.trim()) {
       return { source: 'env', maskedValue: maskCredential(envValue) };
     }
     try {

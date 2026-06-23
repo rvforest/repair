@@ -117,6 +117,156 @@ describe('auth commands', () => {
     expect(output.value()).toBe('openrouter: secure-store (test secure store)\n');
   });
 
+  it('reports every remote provider and marks the active provider when status has no argument', async () => {
+    const output = outputBuffer();
+    const status = vi.fn(async (provider: string) => ({
+      source: provider === 'openrouter' ? 'secure-store' : 'missing',
+      ...(provider === 'openrouter' && { backend: testBackend }),
+    }));
+
+    await showCredentialStatus(undefined, {
+      configManager: {
+        load: vi.fn().mockResolvedValue({ provider: 'openai' }),
+      },
+      store: {
+        backend: testBackend,
+      } as any,
+      resolver: { status } as any,
+      stdout: output.stream,
+    });
+
+    expect(status).toHaveBeenCalledTimes(REMOTE_PROVIDERS.length);
+    for (const provider of REMOTE_PROVIDERS) {
+      expect(output.value()).toContain(provider);
+    }
+    expect(output.value()).toContain('openai (active)');
+    expect(output.value()).toMatch(/openai \(active\)\s+missing/);
+    expect(output.value()).toMatch(/openrouter\s+secure-store \(test secure store\)/);
+  });
+
+  it('applies an environment credential only to the active provider in inventory status', async () => {
+    const output = outputBuffer();
+    const status = vi.fn(async (_provider: string, options?: { includeEnvironment?: boolean }) =>
+      options?.includeEnvironment
+        ? { source: 'env', maskedValue: '******uter' }
+        : { source: 'missing', errorCode: 'missing' },
+    );
+
+    await showCredentialStatus(undefined, {
+      configManager: {
+        load: vi.fn().mockResolvedValue({ provider: 'openrouter' }),
+      },
+      store: {
+        backend: testBackend,
+      } as any,
+      resolver: { status } as any,
+      stdout: output.stream,
+    });
+
+    for (const provider of REMOTE_PROVIDERS) {
+      expect(status).toHaveBeenCalledWith(provider, {
+        includeEnvironment: provider === 'openrouter',
+      });
+    }
+    expect(output.value()).toMatch(/openrouter \(active\)\s+env \*{6}uter/);
+  });
+
+  it('reports a local active provider without treating an environment credential as remote', async () => {
+    const output = outputBuffer();
+    const status = vi.fn().mockResolvedValue({ source: 'missing', errorCode: 'missing' });
+
+    await showCredentialStatus(undefined, {
+      configManager: {
+        load: vi.fn().mockResolvedValue({ provider: 'local' }),
+      },
+      store: {
+        backend: testBackend,
+      } as any,
+      resolver: { status } as any,
+      stdout: output.stream,
+    });
+
+    expect(output.value()).toContain('Active provider: local (no credential required)');
+    expect(output.value()).not.toContain('local (active)');
+    for (const provider of REMOTE_PROVIDERS) {
+      expect(status).toHaveBeenCalledWith(provider, {
+        includeEnvironment: false,
+      });
+    }
+  });
+
+  it('initiates all inventory status checks before waiting for any one result', async () => {
+    const pending: Array<(status: { source: 'missing'; errorCode: 'missing' }) => void> = [];
+    const status = vi.fn(
+      () =>
+        new Promise<{ source: 'missing'; errorCode: 'missing' }>((resolve) => {
+          pending.push(resolve);
+        }),
+    );
+    const result = showCredentialStatus(undefined, {
+      configManager: {
+        load: vi.fn().mockResolvedValue({ provider: 'openai' }),
+      },
+      store: {
+        backend: testBackend,
+      } as any,
+      resolver: { status } as any,
+      stdout: outputBuffer().stream,
+    });
+
+    await vi.waitFor(() => expect(status).toHaveBeenCalledTimes(REMOTE_PROVIDERS.length));
+    for (const resolve of pending) resolve({ source: 'missing', errorCode: 'missing' });
+    await result;
+  });
+
+  it('warns after storing a credential for a provider that is not active', async () => {
+    const output = outputBuffer();
+    const store = {
+      backend: testBackend,
+      preflight: vi.fn(),
+      exists: vi.fn().mockResolvedValue(false),
+      set: vi.fn(),
+      get: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    await setCredential('openrouter', false, {
+      configManager: {
+        load: vi.fn().mockResolvedValue({ provider: 'openai' }),
+      },
+      store,
+      promptSecret: vi.fn().mockResolvedValue('secret'),
+      stdout: output.stream,
+    });
+
+    expect(output.value()).toContain('Stored credential for openrouter');
+    expect(output.value()).toContain('active provider is openai');
+    expect(output.value()).toContain('REPAIR_PROVIDER=openrouter');
+  });
+
+  it('does not warn after storing a credential for the active provider', async () => {
+    const output = outputBuffer();
+    const store = {
+      backend: testBackend,
+      preflight: vi.fn(),
+      exists: vi.fn().mockResolvedValue(false),
+      set: vi.fn(),
+      get: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    await setCredential('openrouter', false, {
+      configManager: {
+        load: vi.fn().mockResolvedValue({ provider: 'openrouter' }),
+      },
+      store,
+      promptSecret: vi.fn().mockResolvedValue('secret'),
+      stdout: output.stream,
+    });
+
+    expect(output.value()).toBe('Stored credential for openrouter in test secure store.\n');
+  });
+
   it('removes credentials and handles missing entries gracefully', async () => {
     const output = outputBuffer();
     const store = {
@@ -181,7 +331,7 @@ describe('auth commands', () => {
     expect(store.set).not.toHaveBeenCalled();
   });
 
-  it.each(['set', 'status', 'remove'])('lists remote providers in auth %s help', (subcommand) => {
+  it.each(['set', 'remove'])('lists remote providers in auth %s help', (subcommand) => {
     const program = new Command();
     registerAuthCommands(program);
 
@@ -192,6 +342,19 @@ describe('auth commands', () => {
 
     expect(normalizedHelp).toContain(REMOTE_PROVIDERS.join(', '));
     expect(normalizedHelp).toContain('defaults to the configured provider');
+    expect(normalizedHelp).not.toContain('local');
+  });
+
+  it('explains that auth status lists all providers when its argument is omitted', () => {
+    const program = new Command();
+    registerAuthCommands(program);
+
+    const auth = program.commands.find((command) => command.name() === 'auth');
+    const command = auth?.commands.find((candidate) => candidate.name() === 'status');
+    const normalizedHelp = command?.helpInformation().replace(/\s+/g, ' ');
+
+    expect(normalizedHelp).toContain(REMOTE_PROVIDERS.join(', '));
+    expect(normalizedHelp).toContain('omit to list all providers');
     expect(normalizedHelp).not.toContain('local');
   });
 });

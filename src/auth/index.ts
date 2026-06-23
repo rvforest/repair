@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import * as readline from 'readline';
 import { ConfigManager } from '../config';
 import {
+  CredentialStatus,
   CredentialError,
   CredentialResolver,
   CredentialResolverLike,
@@ -10,10 +11,10 @@ import {
   createCredentialStore,
   validateRemoteProvider,
 } from '../credentials';
-import { LLMProvider } from '../types';
+import { LLM_PROVIDERS, LLMProvider, RemoteLLMProvider } from '../types';
 
-const PROVIDER_ARGUMENT_DESCRIPTION =
-  `Remote provider (${REMOTE_PROVIDERS.join(', ')}); defaults to the configured provider`;
+const PROVIDER_ARGUMENT_DESCRIPTION = `Remote provider (${REMOTE_PROVIDERS.join(', ')}); defaults to the configured provider`;
+const STATUS_PROVIDER_ARGUMENT_DESCRIPTION = `Remote provider (${REMOTE_PROVIDERS.join(', ')}); omit to list all providers`;
 
 export interface AuthDependencies {
   configManager?: Pick<ConfigManager, 'load'>;
@@ -48,7 +49,7 @@ export function registerAuthCommands(program: Command, dependencies: AuthDepende
   auth
     .command('status')
     .description('Show credential availability and effective source')
-    .argument('[provider]', PROVIDER_ARGUMENT_DESCRIPTION)
+    .argument('[provider]', STATUS_PROVIDER_ARGUMENT_DESCRIPTION)
     .allowExcessArguments(false)
     .action(async (provider: string | undefined) => {
       await runAuthAction(() => showCredentialStatus(provider, dependencies));
@@ -70,6 +71,7 @@ export async function setCredential(
   dependencies: AuthDependencies = {},
 ): Promise<void> {
   const provider = await resolveProvider(providerArgument, dependencies);
+  const activeProvider = providerArgument ? await loadConfiguredProvider(dependencies) : provider;
   const store = resolveStore(dependencies);
   const output = dependencies.stdout || process.stdout;
   await store.preflight();
@@ -91,16 +93,36 @@ export async function setCredential(
   }
   await store.set(provider, value);
   output.write(`Stored credential for ${provider} in ${store.backend.displayName}.\n`);
+  if (activeProvider !== provider) {
+    output.write(
+      `Note: active provider is ${activeProvider}. This credential will not be used unless ${provider} is selected.\n` +
+        `Set REPAIR_PROVIDER=${provider} to use it.\n`,
+    );
+  }
 }
 
 export async function showCredentialStatus(
   providerArgument: string | undefined,
   dependencies: AuthDependencies = {},
 ): Promise<void> {
-  const provider = await resolveProvider(providerArgument, dependencies);
   const store = resolveStore(dependencies);
   const resolver = dependencies.resolver || new CredentialResolver(store);
   const output = dependencies.stdout || process.stdout;
+  if (!providerArgument) {
+    const activeProvider = await loadConfiguredProvider(dependencies);
+    const statuses = await Promise.all(
+      REMOTE_PROVIDERS.map(async (provider) => ({
+        provider,
+        status: await resolver.status(provider, {
+          includeEnvironment: provider === activeProvider,
+        }),
+      })),
+    );
+    output.write(formatCredentialInventory(activeProvider, statuses, store));
+    return;
+  }
+
+  const provider = validateRemoteProvider(providerArgument);
   const status = await resolver.status(provider);
 
   if (status.source === 'env') {
@@ -120,6 +142,39 @@ export async function showCredentialStatus(
       status.errorCode || 'backend-failure'
     })\n`,
   );
+}
+
+function formatCredentialInventory(
+  activeProvider: LLMProvider,
+  statuses: Array<{ provider: RemoteLLMProvider; status: CredentialStatus }>,
+  store: CredentialStore,
+): string {
+  const providerLabels = statuses.map(({ provider }) => `${provider}${provider === activeProvider ? ' (active)' : ''}`);
+  const providerWidth = Math.max('Provider'.length, ...providerLabels.map((label) => label.length));
+  const lines: string[] = [];
+  if (activeProvider === 'local') {
+    lines.push('Active provider: local (no credential required)', '');
+  }
+  lines.push(`${'Provider'.padEnd(providerWidth)}  Credential`);
+  for (const [index, { status }] of statuses.entries()) {
+    lines.push(`${providerLabels[index].padEnd(providerWidth)}  ${formatCredentialStatus(status, store)}`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+function formatCredentialStatus(status: CredentialStatus, store: CredentialStore): string {
+  if (status.source === 'env') {
+    return `env ${status.maskedValue}`;
+  }
+  if (status.source === 'secure-store') {
+    return `secure-store (${status.backend?.displayName || store.backend.displayName})`;
+  }
+  if (status.source === 'missing') {
+    return 'missing';
+  }
+  return `unavailable (${status.backend?.displayName || store.backend.displayName}; ${
+    status.errorCode || 'backend-failure'
+  })`;
 }
 
 export async function removeCredential(
@@ -249,12 +304,20 @@ async function resolveProvider(
   dependencies: AuthDependencies,
 ): Promise<LLMProvider> {
   if (providerArgument) return validateRemoteProvider(providerArgument);
-  const manager = dependencies.configManager || new ConfigManager();
-  const config = await manager.load({ requireApiKey: false });
-  if (config.provider === 'local') {
+  const provider = await loadConfiguredProvider(dependencies);
+  if (provider === 'local') {
     throw new Error('Local providers do not use stored API credentials.');
   }
-  return validateRemoteProvider(config.provider);
+  return validateRemoteProvider(provider);
+}
+
+async function loadConfiguredProvider(dependencies: AuthDependencies): Promise<LLMProvider> {
+  const manager = dependencies.configManager || new ConfigManager();
+  const config = await manager.load({ requireApiKey: false });
+  if (!LLM_PROVIDERS.includes(config.provider)) {
+    throw new Error(`Invalid provider: ${config.provider}. Valid providers are: ${LLM_PROVIDERS.join(', ')}`);
+  }
+  return config.provider;
 }
 
 function resolveStore(dependencies: AuthDependencies): CredentialStore {

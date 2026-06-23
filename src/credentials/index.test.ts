@@ -314,6 +314,26 @@ describe('CredentialResolver', () => {
     expect(store.get).not.toHaveBeenCalled();
   });
 
+  it('can ignore the unscoped environment credential for provider inventory checks', async () => {
+    const store = {
+      backend: testBackend,
+      get: vi.fn(),
+      preflight: vi.fn(),
+      exists: vi.fn().mockResolvedValue(true),
+      set: vi.fn(),
+      remove: vi.fn(),
+    };
+    const resolver = new CredentialResolver(store, {
+      REPAIR_API_KEY: 'active-provider-key',
+    });
+
+    await expect(resolver.status('anthropic', { includeEnvironment: false })).resolves.toEqual({
+      source: 'secure-store',
+      backend: testBackend,
+    });
+    expect(store.exists).toHaveBeenCalledWith('anthropic');
+  });
+
   it('selects pass only for Linux and explicit unavailable stores elsewhere', async () => {
     expect(createCredentialStore({ platform: 'linux' })).toBeInstanceOf(PassCredentialStore);
 
