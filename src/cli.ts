@@ -7,6 +7,7 @@ import { main } from './index';
 import { generateShellInit } from './shell-hooks';
 import { normalizeTimestamp, SessionStore } from './session';
 import { version } from '../package.json';
+import { registerAuthCommands } from './auth';
 
 const program = new Command();
 
@@ -38,6 +39,8 @@ program
     }
   });
 
+registerAuthCommands(program);
+
 program
   .command('init <shell>')
   .description('Print shell integration for a supported shell')
@@ -60,33 +63,32 @@ program
   .requiredOption('--ts <timestamp>', 'Command timestamp')
   .option('--cwd <cwd>', 'Working directory')
   .option('--shell <shell>', 'Shell name')
-  .action(async (options: {
-    cmd: string;
-    code: string;
-    ts: string;
-    cwd?: string;
-    shell?: string;
-  }) => {
+  .action(async (options: { cmd: string; code: string; ts: string; cwd?: string; shell?: string }) => {
     try {
       const configManager = new ConfigManager();
-      const captureConfig = await configManager.load({ requireApiKey: false });
+      const captureConfig = await configManager.load({
+        requireApiKey: false,
+      });
       configManager.validate(captureConfig, { requireApiKey: false });
 
       const stdin = await readStdin(captureConfig.maxCaptureBytes);
       const sessionStore = new SessionStore();
 
-      await sessionStore.capture({
-        command: options.cmd,
-        output: stdin.text,
-        exitCode: Number(options.code),
-        timestamp: normalizeTimestamp(options.ts),
-        cwd: options.cwd,
-        shell: options.shell,
-      }, {
-        includeCwd: captureConfig.includeCwd,
-        stdinWasTruncated: stdin.truncated,
-        maxPersistedOutputBytes: captureConfig.maxPersistedOutputBytes,
-      });
+      await sessionStore.capture(
+        {
+          command: options.cmd,
+          output: stdin.text,
+          exitCode: Number(options.code),
+          timestamp: normalizeTimestamp(options.ts),
+          cwd: options.cwd,
+          shell: options.shell,
+        },
+        {
+          includeCwd: captureConfig.includeCwd,
+          stdinWasTruncated: stdin.truncated,
+          maxPersistedOutputBytes: captureConfig.maxPersistedOutputBytes,
+        },
+      );
     } catch (error) {
       if (error instanceof Error) {
         console.error(`Error: ${error.message}`);
@@ -95,7 +97,12 @@ program
     }
   });
 
-program.parse();
+void program.parseAsync().catch((error) => {
+  if (error instanceof Error) {
+    console.error(`Error: ${error.message}`);
+  }
+  process.exitCode = 1;
+});
 
 async function readStdin(maxBytes: number = 64 * 1024): Promise<{ text: string; truncated: boolean }> {
   const chunks: Buffer[] = [];

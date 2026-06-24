@@ -6,6 +6,7 @@ import { OutputFormatter } from './output';
 import { markErrorAsDisplayed } from './errors';
 import { getShellCaptureStatus, isShellIntegrationConfigured, SessionError, SessionStore } from './session';
 import { AnalysisRequest, AnalysisResponse, Config, SanitizedSessionBundle } from './types';
+import { CredentialError, CredentialResolver, CredentialResolverLike, credentialErrorMessage } from './credentials';
 
 interface MainOptions {
   cacheEnabled?: boolean;
@@ -16,19 +17,20 @@ interface MainOptions {
 interface MainDependencies {
   configManager?: Pick<ConfigManager, 'load' | 'validate'>;
   sessionStore?: Pick<SessionStore, 'read' | 'toAnalysisRequest'>;
-  securityFilter?: Pick<SecurityFilter, 'sanitizeAnalysisRequest' | 'sanitizeResponse' | 'confirmSend' | 'sanitizeForDisplay'>;
+  securityFilter?: Pick<
+    SecurityFilter,
+    'sanitizeAnalysisRequest' | 'sanitizeResponse' | 'confirmSend' | 'sanitizeForDisplay'
+  >;
   cacheFactory?: (ttl: number) => {
     get(request: AnalysisRequest): Promise<AnalysisResponse | null>;
     set(request: AnalysisRequest, response: AnalysisResponse): Promise<void>;
   };
   llmProviderFactory?: typeof createLLMProvider;
+  credentialResolver?: CredentialResolverLike;
   formatter?: OutputFormatter;
 }
 
-export async function main(
-  options: MainOptions = {},
-  dependencies: MainDependencies = {},
-): Promise<void> {
+export async function main(options: MainOptions = {}, dependencies: MainDependencies = {}): Promise<void> {
   const formatter = dependencies.formatter || new OutputFormatter();
 
   try {
@@ -37,6 +39,7 @@ export async function main(
     const securityFilter = dependencies.securityFilter || new SecurityFilter();
     const createCache = dependencies.cacheFactory || ((ttl: number) => new CacheManager(ttl));
     const llmProviderFactory = dependencies.llmProviderFactory || createLLMProvider;
+    const credentialResolver = dependencies.credentialResolver || new CredentialResolver();
 
     let sessionBundle: SanitizedSessionBundle;
 
@@ -88,7 +91,7 @@ export async function main(
       confirmBeforeSend: options.confirmBeforeSend !== undefined ? options.confirmBeforeSend : config.confirmBeforeSend,
     };
 
-    configManager.validate(effectiveConfig);
+    configManager.validate(effectiveConfig, { requireApiKey: false });
 
     let analysisRequest: AnalysisRequest = {
       ...sessionStore.toAnalysisRequest(sessionBundle, effectiveConfig.includeCwd === true),
@@ -131,14 +134,10 @@ export async function main(
     }
 
     if (effectiveConfig.confirmBeforeSend) {
-      const confirmed = await securityFilter.confirmSend(
-        analysisRequest.command,
-        analysisRequest.output,
-        {
-          truncated: sessionBundle.truncated,
-          redactionsApplied: sessionBundle.redactionsApplied,
-        },
-      );
+      const confirmed = await securityFilter.confirmSend(analysisRequest.command, analysisRequest.output, {
+        truncated: sessionBundle.truncated,
+        redactionsApplied: sessionBundle.redactionsApplied,
+      });
 
       if (!confirmed) {
         console.log(formatter.formatInfo('Cancelled by user'));
@@ -171,7 +170,24 @@ export async function main(
       console.log(formatter.formatInfo('Analyzing error with LLM...'));
     }
 
-    const llmProvider = llmProviderFactory(effectiveConfig);
+    let providerConfig = effectiveConfig;
+    if (effectiveConfig.provider !== 'local') {
+      try {
+        const apiKey = (await credentialResolver.resolve(effectiveConfig.provider))?.value;
+        providerConfig = {
+          ...effectiveConfig,
+          ...(apiKey && { apiKey }),
+        };
+      } catch (error) {
+        if (error instanceof CredentialError) {
+          throw new Error(credentialErrorMessage(error, effectiveConfig.provider, error.backend));
+        }
+        throw error;
+      }
+    }
+    configManager.validate(providerConfig);
+
+    const llmProvider = llmProviderFactory(providerConfig);
     response = securityFilter.sanitizeResponse(await llmProvider.analyze(analysisRequest));
 
     if (effectiveConfig.cacheEnabled && cacheManager) {
@@ -179,7 +195,6 @@ export async function main(
     }
 
     console.log('\n' + formatter.formatResponse(response));
-
   } catch (error) {
     if (error instanceof Error) {
       console.error('\n' + formatter.formatError(error.message));
@@ -187,7 +202,7 @@ export async function main(
       // Provide helpful context for common errors
       if (error.message.includes('API') || error.message.includes('authentication')) {
         console.error('\n' + formatter.formatInfo('Check your API key configuration'));
-        console.error(formatter.formatInfo('Set REPAIR_API_KEY environment variable or configure in ~/.config/repair/config.json'));
+        console.error(formatter.formatInfo('Run repair auth set on Linux/WSL, or set REPAIR_API_KEY'));
       }
 
       if (error.message.includes('rate limit')) {

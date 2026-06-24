@@ -12,7 +12,10 @@ export interface Config {
   maxPersistedOutputBytes?: number;
 }
 
-export type LLMProvider = 'openai' | 'anthropic' | 'google' | 'openrouter' | 'local';
+export const LLM_PROVIDERS = ['openai', 'anthropic', 'google', 'openrouter', 'local'] as const;
+
+export type LLMProvider = (typeof LLM_PROVIDERS)[number];
+export type RemoteLLMProvider = Exclude<LLMProvider, 'local'>;
 
 export interface LLMProviderConfig {
   apiKey: string;

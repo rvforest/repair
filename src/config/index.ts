@@ -6,7 +6,7 @@ import {
   MAX_ALLOWED_CAPTURE_BYTES,
   MAX_ALLOWED_PERSISTED_OUTPUT_BYTES,
 } from '../security';
-import { Config, LLMProvider } from '../types';
+import { Config, LLM_PROVIDERS, LLMProvider } from '../types';
 import { ensurePrivateDirectory, pathExists, readTextFileSafe, writeTextFileAtomic } from '../storage';
 
 const DEFAULT_CONFIG: Config = {
@@ -29,9 +29,7 @@ export class ConfigManager {
   }
 
   async load(options: { requireApiKey?: boolean } = {}): Promise<Config> {
-    // Check environment variables first
     const envProvider = process.env.REPAIR_PROVIDER as LLMProvider;
-    const envApiKey = process.env.REPAIR_API_KEY;
     const envModel = process.env.REPAIR_MODEL;
     const envIncludeCwd = process.env.REPAIR_INCLUDE_CWD;
     const envMaxCaptureBytes = process.env.REPAIR_MAX_CAPTURE_BYTES;
@@ -43,7 +41,18 @@ export class ConfigManager {
       try {
         const fileContent = readTextFileSafe(this.configPath, 128 * 1024);
         fileConfig = JSON.parse(fileContent);
+        if (options.requireApiKey !== false && Object.prototype.hasOwnProperty.call(fileConfig, 'apiKey')) {
+          throw new Error(
+            `Plaintext apiKey configuration is no longer supported in ${this.configPath}.\n` +
+              'Run repair auth set for interactive Linux/WSL use, or set REPAIR_API_KEY.\n' +
+              'Then remove the apiKey property from the config file.',
+          );
+        }
+        delete fileConfig.apiKey;
       } catch (error) {
+        if (error instanceof Error && error.message.includes('Plaintext apiKey')) {
+          throw error;
+        }
         console.warn(`Warning: Could not parse config file at ${this.configPath}`);
       }
     }
@@ -53,26 +62,26 @@ export class ConfigManager {
       ...DEFAULT_CONFIG,
       ...fileConfig,
       ...(envProvider && { provider: envProvider }),
-      ...(envApiKey && { apiKey: envApiKey }),
       ...(envModel && { model: envModel }),
-      ...(envIncludeCwd !== undefined && { includeCwd: envIncludeCwd === '1' || envIncludeCwd === 'true' }),
-      ...(envMaxCaptureBytes && { maxCaptureBytes: Number(envMaxCaptureBytes) }),
-      ...(envMaxPersistedOutputBytes && { maxPersistedOutputBytes: Number(envMaxPersistedOutputBytes) }),
+      ...(envIncludeCwd !== undefined && {
+        includeCwd: envIncludeCwd === '1' || envIncludeCwd === 'true',
+      }),
+      ...(envMaxCaptureBytes && {
+        maxCaptureBytes: Number(envMaxCaptureBytes),
+      }),
+      ...(envMaxPersistedOutputBytes && {
+        maxPersistedOutputBytes: Number(envMaxPersistedOutputBytes),
+      }),
     };
-
-    // If no API key is found, prompt user to configure
-    if (options.requireApiKey !== false && !config.apiKey) {
-      throw new Error(
-        'No API key configured. Please set REPAIR_API_KEY environment variable or run setup:\n' +
-        'export REPAIR_API_KEY=your-api-key-here\n' +
-        'Or create a config file at: ' + this.configPath
-      );
-    }
 
     return config;
   }
 
   async save(config: Partial<Config>): Promise<void> {
+    if (Object.prototype.hasOwnProperty.call(config, 'apiKey')) {
+      throw new Error('Refusing to save apiKey in plaintext configuration. Use repair auth set or REPAIR_API_KEY.');
+    }
+
     const configDir = path.dirname(this.configPath);
 
     // Create config directory if it doesn't exist
@@ -84,6 +93,7 @@ export class ConfigManager {
       try {
         const fileContent = readTextFileSafe(this.configPath, 128 * 1024);
         existingConfig = JSON.parse(fileContent);
+        delete existingConfig.apiKey;
       } catch (error) {
         // Ignore parse errors, will overwrite
       }
@@ -95,12 +105,8 @@ export class ConfigManager {
   }
 
   validate(config: Config, options: { requireApiKey?: boolean } = {}): void {
-    const validProviders: LLMProvider[] = ['openai', 'anthropic', 'google', 'openrouter', 'local'];
-
-    if (!validProviders.includes(config.provider)) {
-      throw new Error(
-        `Invalid provider: ${config.provider}. Valid providers are: ${validProviders.join(', ')}`
-      );
+    if (!LLM_PROVIDERS.includes(config.provider)) {
+      throw new Error(`Invalid provider: ${config.provider}. Valid providers are: ${LLM_PROVIDERS.join(', ')}`);
     }
 
     if (options.requireApiKey !== false && !config.apiKey && config.provider !== 'local') {
@@ -120,27 +126,27 @@ export class ConfigManager {
     }
 
     if (
-      config.maxCaptureBytes !== undefined
-      && (!Number.isInteger(config.maxCaptureBytes)
-      || config.maxCaptureBytes < 1024
-      || config.maxCaptureBytes > MAX_ALLOWED_CAPTURE_BYTES)
+      config.maxCaptureBytes !== undefined &&
+      (!Number.isInteger(config.maxCaptureBytes) ||
+        config.maxCaptureBytes < 1024 ||
+        config.maxCaptureBytes > MAX_ALLOWED_CAPTURE_BYTES)
     ) {
       throw new Error(`maxCaptureBytes must be between 1024 and ${MAX_ALLOWED_CAPTURE_BYTES}`);
     }
 
     if (
-      config.maxPersistedOutputBytes !== undefined
-      && (!Number.isInteger(config.maxPersistedOutputBytes)
-      || config.maxPersistedOutputBytes < 1024
-      || config.maxPersistedOutputBytes > MAX_ALLOWED_PERSISTED_OUTPUT_BYTES)
+      config.maxPersistedOutputBytes !== undefined &&
+      (!Number.isInteger(config.maxPersistedOutputBytes) ||
+        config.maxPersistedOutputBytes < 1024 ||
+        config.maxPersistedOutputBytes > MAX_ALLOWED_PERSISTED_OUTPUT_BYTES)
     ) {
       throw new Error(`maxPersistedOutputBytes must be between 1024 and ${MAX_ALLOWED_PERSISTED_OUTPUT_BYTES}`);
     }
 
     if (
-      config.maxCaptureBytes !== undefined
-      && config.maxPersistedOutputBytes !== undefined
-      && config.maxPersistedOutputBytes > config.maxCaptureBytes
+      config.maxCaptureBytes !== undefined &&
+      config.maxPersistedOutputBytes !== undefined &&
+      config.maxPersistedOutputBytes > config.maxCaptureBytes
     ) {
       throw new Error('maxPersistedOutputBytes must not exceed maxCaptureBytes');
     }
