@@ -3,6 +3,8 @@ import { wasErrorDisplayed } from './errors';
 import { main } from './index';
 import { AnalysisRequest, AnalysisResponse, Config, SanitizedSessionBundle } from './types';
 
+type MainDependencies = NonNullable<Parameters<typeof main>[1]>;
+
 describe('main shell-session flow', () => {
   const originalEnv = { ...process.env };
 
@@ -32,7 +34,7 @@ describe('main shell-session flow', () => {
           sessionStore: {
             read: vi.fn().mockRejectedValue(missingSessionError),
             toAnalysisRequest: vi.fn(),
-          } as any,
+          } as unknown as MainDependencies['sessionStore'],
         },
       );
     } catch (error) {
@@ -62,7 +64,7 @@ describe('main shell-session flow', () => {
           sessionStore: {
             read: vi.fn().mockRejectedValue(missingSessionError),
             toAnalysisRequest: vi.fn(),
-          } as any,
+          } as unknown as MainDependencies['sessionStore'],
         },
       ),
     ).rejects.toThrow('No captured command output is available yet');
@@ -81,7 +83,7 @@ describe('main shell-session flow', () => {
           sessionStore: {
             read: vi.fn().mockRejectedValue({ code: 'missing' }),
             toAnalysisRequest: vi.fn(),
-          } as any,
+          } as unknown as MainDependencies['sessionStore'],
         },
       ),
     ).rejects.toThrow('No failed command is currently available for analysis');
@@ -98,7 +100,7 @@ describe('main shell-session flow', () => {
           sessionStore: {
             read: vi.fn().mockRejectedValue({ code: 'missing' }),
             toAnalysisRequest: vi.fn(),
-          } as any,
+          } as unknown as MainDependencies['sessionStore'],
         },
       ),
     ).rejects.toThrow('excluded from capture by default');
@@ -138,7 +140,7 @@ describe('main shell-session flow', () => {
               timestamp: '2026-04-01T12:00:00.000Z',
             },
           }),
-        } as any,
+        } as unknown as MainDependencies['sessionStore'],
         configManager: {
           load: vi.fn().mockResolvedValue({
             provider: 'local',
@@ -195,7 +197,7 @@ describe('main shell-session flow', () => {
         sessionStore: {
           read: vi.fn().mockResolvedValue(sanitizedBundle),
           toAnalysisRequest: vi.fn().mockReturnValue(analysisRequest),
-        } as any,
+        } as unknown as MainDependencies['sessionStore'],
         configManager: {
           load: vi.fn().mockResolvedValue({
             provider: 'local',
@@ -250,7 +252,7 @@ describe('main shell-session flow', () => {
             redactionsApplied: 0,
           }),
           toAnalysisRequest: vi.fn().mockReturnValue({ command: 'false', output: 'failed' }),
-        } as any,
+        } as unknown as MainDependencies['sessionStore'],
         configManager: {
           load: vi.fn().mockResolvedValue({
             provider: 'openai',
@@ -262,7 +264,7 @@ describe('main shell-session flow', () => {
         securityFilter: {
           sanitizeAnalysisRequest: vi.fn((request) => request),
           confirmSend: vi.fn().mockResolvedValue(false),
-        } as any,
+        } as unknown as MainDependencies['securityFilter'],
         credentialResolver: {
           resolve,
           status: vi.fn(),
@@ -292,7 +294,7 @@ describe('main shell-session flow', () => {
             redactionsApplied: 0,
           }),
           toAnalysisRequest: vi.fn().mockReturnValue({ command: 'false', output: 'failed' }),
-        } as any,
+        } as unknown as MainDependencies['sessionStore'],
         configManager: {
           load: vi.fn().mockResolvedValue({
             provider: 'openai',
@@ -345,7 +347,7 @@ describe('main shell-session flow', () => {
             redactionsApplied: 0,
           }),
           toAnalysisRequest: vi.fn().mockReturnValue({ command: 'false', output: 'failed' }),
-        } as any,
+        } as unknown as MainDependencies['sessionStore'],
         configManager: {
           load: vi.fn().mockResolvedValue({
             provider: 'openai',

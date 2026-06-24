@@ -68,7 +68,9 @@ export function writeTextFileAtomic(filePath: string, content: string): void {
   } catch (error) {
     try {
       fs.rmSync(tempPath, { force: true });
-    } catch {}
+    } catch {
+      // Best effort: preserve the original write/rename error if temp cleanup fails.
+    }
     throw error;
   }
 }

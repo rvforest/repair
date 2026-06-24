@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { EventEmitter } from 'events';
 import { describe, expect, it, vi } from 'vitest';
-import { REMOTE_PROVIDERS } from '../credentials';
+import { CredentialResolverLike, CredentialStore, REMOTE_PROVIDERS } from '../credentials';
 import { promptMasked, registerAuthCommands, removeCredential, setCredential, showCredentialStatus } from './index';
 
 const testBackend = {
@@ -11,13 +11,14 @@ const testBackend = {
 
 function outputBuffer() {
   let value = '';
+  const stream: Pick<NodeJS.WriteStream, 'write'> & Partial<Pick<NodeJS.WriteStream, 'isTTY'>> = {
+    write: (chunk: string) => {
+      value += chunk;
+      return true;
+    },
+  };
   return {
-    stream: {
-      write: (chunk: string) => {
-        value += chunk;
-        return true;
-      },
-    } as any,
+    stream,
     value: () => value,
   };
 }
@@ -108,10 +109,10 @@ describe('auth commands', () => {
     await showCredentialStatus('openrouter', {
       store: {
         backend: testBackend,
-      } as any,
+      } as unknown as CredentialStore,
       resolver: {
         status: vi.fn().mockResolvedValue({ source: 'secure-store', backend: testBackend }),
-      } as any,
+      } as unknown as CredentialResolverLike,
       stdout: output.stream,
     });
     expect(output.value()).toBe('openrouter: secure-store (test secure store)\n');
@@ -130,8 +131,8 @@ describe('auth commands', () => {
       },
       store: {
         backend: testBackend,
-      } as any,
-      resolver: { status } as any,
+      } as unknown as CredentialStore,
+      resolver: { status } as unknown as CredentialResolverLike,
       stdout: output.stream,
     });
 
@@ -158,8 +159,8 @@ describe('auth commands', () => {
       },
       store: {
         backend: testBackend,
-      } as any,
-      resolver: { status } as any,
+      } as unknown as CredentialStore,
+      resolver: { status } as unknown as CredentialResolverLike,
       stdout: output.stream,
     });
 
@@ -181,8 +182,8 @@ describe('auth commands', () => {
       },
       store: {
         backend: testBackend,
-      } as any,
-      resolver: { status } as any,
+      } as unknown as CredentialStore,
+      resolver: { status } as unknown as CredentialResolverLike,
       stdout: output.stream,
     });
 
@@ -209,8 +210,8 @@ describe('auth commands', () => {
       },
       store: {
         backend: testBackend,
-      } as any,
-      resolver: { status } as any,
+      } as unknown as CredentialStore,
+      resolver: { status } as unknown as CredentialResolverLike,
       stdout: outputBuffer().stream,
     });
 
@@ -385,7 +386,7 @@ describe('masked prompt', () => {
     const result = promptMasked('Credential: ', {
       stdin,
       stdout: output.stream,
-      signalTarget: signals as any,
+      signalTarget: signals as unknown as Pick<NodeJS.Process, 'once' | 'off'>,
       terminate,
     });
 
@@ -403,7 +404,7 @@ describe('masked prompt', () => {
     const result = promptMasked('Credential: ', {
       stdin,
       stdout: output.stream,
-      signalTarget: new EventEmitter() as any,
+      signalTarget: new EventEmitter() as unknown as Pick<NodeJS.Process, 'once' | 'off'>,
       terminate: vi.fn(),
     });
 

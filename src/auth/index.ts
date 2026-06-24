@@ -215,7 +215,9 @@ export async function promptMasked(message: string, dependencies: MaskedPromptDe
   } catch (error) {
     try {
       stdin.setRawMode(Boolean(previousRaw));
-    } catch {}
+    } catch {
+      // Best effort: preserve the original prompt failure if terminal restoration fails.
+    }
     throw error;
   }
 
@@ -232,13 +234,19 @@ export async function promptMasked(message: string, dependencies: MaskedPromptDe
       for (const signal of signals) signalTarget.off(signal, signalHandlers[signal]);
       try {
         stdin.setRawMode(Boolean(previousRaw));
-      } catch {}
+      } catch {
+        // Best effort: cleanup should not hide the prompt cancellation or read error.
+      }
       try {
         if (wasPaused) stdin.pause();
-      } catch {}
+      } catch {
+        // Best effort: cleanup should not hide the prompt cancellation or read error.
+      }
       try {
         stdout.write('\n');
-      } catch {}
+      } catch {
+        // Best effort: cleanup should not hide the prompt cancellation or read error.
+      }
     };
     const fail = (error: Error) => {
       cleanup();

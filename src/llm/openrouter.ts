@@ -3,6 +3,14 @@ import { AnalysisRequest, AnalysisResponse } from '../types';
 import { LLMProvider } from './base';
 import { buildAnalysisPrompt, parseAnalysisResponse } from './prompt';
 
+interface OpenRouterChatResponse {
+  choices: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+}
+
 export class OpenRouterProvider extends LLMProvider {
   private defaultModel = 'anthropic/claude-haiku-4-5-20251001';
 
@@ -40,7 +48,7 @@ export class OpenRouterProvider extends LLMProvider {
       throw this.buildHttpError('OpenRouter', response.status, response.statusText);
     }
 
-    const data = await response.json() as any;
+    const data = (await response.json()) as OpenRouterChatResponse;
     const content = data.choices[0]?.message?.content;
 
     if (!content) {

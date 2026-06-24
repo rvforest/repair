@@ -10,6 +10,7 @@ import {
   CredentialResolver,
   maskCredential,
   PassCredentialStore,
+  PassCredentialStoreOptions,
 } from './index';
 
 const testBackend = {
@@ -17,8 +18,16 @@ const testBackend = {
   displayName: 'test secure store',
 };
 
-function fakeChild(code: number, stdout = '', stderr = ''): any {
-  const child = new EventEmitter() as any;
+type SpawnProcess = NonNullable<PassCredentialStoreOptions['spawnProcess']>;
+type FakeChild = EventEmitter & {
+  stdout: PassThrough;
+  stderr: PassThrough;
+  stdin: PassThrough;
+  kill: ReturnType<typeof vi.fn>;
+};
+
+function fakeChild(code: number, stdout = '', stderr = ''): ReturnType<SpawnProcess> {
+  const child = new EventEmitter() as FakeChild;
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
   child.stdin = new PassThrough();
@@ -32,7 +41,7 @@ function fakeChild(code: number, stdout = '', stderr = ''): any {
       child.emit('close', code);
     });
   });
-  return child;
+  return child as unknown as ReturnType<SpawnProcess>;
 }
 
 describe('credential utilities', () => {
@@ -49,7 +58,7 @@ describe('PassCredentialStore', () => {
     for (const dir of tempDirs) fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  function initializedStore(spawnProcess: any, extra: Record<string, unknown> = {}) {
+  function initializedStore(spawnProcess: SpawnProcess, extra: Record<string, unknown> = {}) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'repair-pass-test-'));
     tempDirs.push(dir);
     fs.writeFileSync(path.join(dir, '.gpg-id'), 'test-key\n', { mode: 0o600 });
@@ -93,7 +102,7 @@ describe('PassCredentialStore', () => {
   });
 
   it('handles pass closing stdin before consuming the credential', async () => {
-    const child = new EventEmitter() as any;
+    const child = new EventEmitter() as FakeChild;
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
     child.stdin = new PassThrough();
@@ -219,7 +228,7 @@ describe('PassCredentialStore', () => {
 
   it('times out even when a blocked subprocess never closes', async () => {
     vi.useFakeTimers();
-    const child = new EventEmitter() as any;
+    const child = new EventEmitter() as FakeChild;
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
     child.stdin = new PassThrough();
