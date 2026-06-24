@@ -3,6 +3,14 @@ import { AnalysisRequest, AnalysisResponse } from '../types';
 import { LLMProvider } from './base';
 import { buildAnalysisPrompt, parseAnalysisResponse } from './prompt';
 
+interface OpenAIChatResponse {
+  choices: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+}
+
 export class OpenAIProvider extends LLMProvider {
   private defaultModel = 'gpt-5.4-mini';
 
@@ -38,7 +46,7 @@ export class OpenAIProvider extends LLMProvider {
       throw this.buildHttpError('OpenAI', response.status, response.statusText);
     }
 
-    const data = await response.json() as any;
+    const data = (await response.json()) as OpenAIChatResponse;
     const content = data.choices[0]?.message?.content;
 
     if (!content) {

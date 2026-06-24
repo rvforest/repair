@@ -3,6 +3,12 @@ import { AnalysisRequest, AnalysisResponse } from '../types';
 import { LLMProvider } from './base';
 import { buildAnalysisPrompt, parseAnalysisResponse } from './prompt';
 
+interface AnthropicMessageResponse {
+  content: Array<{
+    text?: string;
+  }>;
+}
+
 export class AnthropicProvider extends LLMProvider {
   private defaultModel = 'claude-haiku-4-5-20251001';
 
@@ -35,7 +41,7 @@ export class AnthropicProvider extends LLMProvider {
       throw this.buildHttpError('Anthropic', response.status, response.statusText);
     }
 
-    const data = await response.json() as any;
+    const data = (await response.json()) as AnthropicMessageResponse;
     const content = data.content[0]?.text;
 
     if (!content) {

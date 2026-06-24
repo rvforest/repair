@@ -35,10 +35,13 @@ interface RequestSanitizationOptions {
   maxPersistedOutputBytes?: number;
 }
 
+// Terminal escape stripping intentionally matches ANSI control bytes.
+// eslint-disable-next-line no-control-regex
 const CONTROL_SEQUENCE_PATTERN = /(?:\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b\[[0-?]*[ -/]*[@-~]|\u001b[@-Z\\-_])/g;
 
 export class TerminalSanitizer {
   sanitize(text: string): string {
+    // eslint-disable-next-line no-control-regex -- Null byte removal is the sanitizer behavior under test.
     const withoutNulls = text.replace(/\u0000/g, '');
     const normalized = withoutNulls.replace(/\r\n?/g, '\n');
     const withoutSequences = normalized.replace(CONTROL_SEQUENCE_PATTERN, '');

@@ -22,12 +22,13 @@ export function createLLMProvider(config: Config): BaseLLMProvider {
     case 'openrouter':
       return new OpenRouterProvider(apiKey, config.model);
 
-    case 'local':
+    case 'local': {
       if (!config.model) {
         throw new Error('Model is required for local provider');
       }
       const baseURL = process.env.REPAIR_LOCAL_URL || 'http://localhost:11434/v1';
       return new LocalProvider(apiKey, config.model, baseURL);
+    }
 
     default:
       throw new Error(`Unsupported provider: ${config.provider}`);

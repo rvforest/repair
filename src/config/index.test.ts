@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ConfigManager } from './index';
+import { Config } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -55,7 +56,7 @@ describe('ConfigManager', () => {
 
     it('should reject invalid provider', () => {
       const config = {
-        provider: 'invalid' as any,
+        provider: 'invalid' as unknown as Config['provider'],
         apiKey: 'test-key',
         scrollbackLines: 100,
         cacheEnabled: true,

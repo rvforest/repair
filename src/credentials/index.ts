@@ -538,7 +538,9 @@ function findExecutable(name: string, pathValue: string | undefined): string | u
       const resolved = fs.realpathSync(candidate);
       fs.accessSync(resolved, fs.constants.X_OK);
       if (fs.lstatSync(resolved).isFile()) return resolved;
-    } catch {}
+    } catch {
+      // Ignore inaccessible PATH entries while searching later entries.
+    }
   }
   return undefined;
 }

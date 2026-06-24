@@ -75,7 +75,7 @@ if [[ -z "\${REPAIR_SHELL_HOOKS_LOADED:-}" ]]; then
   typeset -g REPAIR_LAST_COMMAND=""
   typeset -g REPAIR_LAST_TIMESTAMP=""
   typeset -g REPAIR_LAST_OUTPUT_FILE=""
-  typeset -g REPAIR_CAPTURE_DIR="\${XDG_STATE_HOME:-\$HOME/.local/state}/repair/captures"
+  typeset -g REPAIR_CAPTURE_DIR="\${XDG_STATE_HOME:-$HOME/.local/state}/repair/captures"
   export REPAIR_LAST_CAPTURE_STATUS="\${REPAIR_LAST_CAPTURE_STATUS:-none}"
 
   repair_prepare_capture_dir() {
@@ -85,7 +85,7 @@ if [[ -z "\${REPAIR_SHELL_HOOKS_LOADED:-}" ]]; then
 
   repair_cleanup_stale_captures() {
     repair_prepare_capture_dir || return 0
-    command find "$REPAIR_CAPTURE_DIR" -type f -name 'capture.*' -mmin +\$REPAIR_CAPTURE_STALE_MINUTES -delete >/dev/null 2>&1 || true
+    command find "$REPAIR_CAPTURE_DIR" -type f -name 'capture.*' -mmin +$REPAIR_CAPTURE_STALE_MINUTES -delete >/dev/null 2>&1 || true
   }
 
   repair_cleanup_capture_file() {
@@ -195,7 +195,7 @@ if [[ -z "\${REPAIR_SHELL_HOOKS_LOADED:-}" ]]; then
   REPAIR_LAST_TIMESTAMP=""
   REPAIR_LAST_OUTPUT_FILE=""
   REPAIR_PREVIOUS_PROMPT_COMMAND="\${PROMPT_COMMAND-}"
-  REPAIR_CAPTURE_DIR="\${XDG_STATE_HOME:-\$HOME/.local/state}/repair/captures"
+  REPAIR_CAPTURE_DIR="\${XDG_STATE_HOME:-$HOME/.local/state}/repair/captures"
   export REPAIR_LAST_CAPTURE_STATUS="\${REPAIR_LAST_CAPTURE_STATUS:-none}"
   REPAIR_CAPTURE_STALE_MINUTES=60
 
@@ -206,7 +206,7 @@ if [[ -z "\${REPAIR_SHELL_HOOKS_LOADED:-}" ]]; then
 
   repair_cleanup_stale_captures() {
     repair_prepare_capture_dir || return 0
-    command find "$REPAIR_CAPTURE_DIR" -type f -name 'capture.*' -mmin +\$REPAIR_CAPTURE_STALE_MINUTES -delete >/dev/null 2>&1 || true
+    command find "$REPAIR_CAPTURE_DIR" -type f -name 'capture.*' -mmin +$REPAIR_CAPTURE_STALE_MINUTES -delete >/dev/null 2>&1 || true
   }
 
   repair_cleanup_capture_file() {
@@ -257,7 +257,7 @@ ${generateRestoreRedirectFn('bash')}
     fi
 
     local cmd
-    cmd="$(HISTTIMEFORMAT= history 1 2>/dev/null | sed 's/^ *[0-9]\+ *//')"
+    cmd="$(HISTTIMEFORMAT= history 1 2>/dev/null | sed 's/^ *[0-9]${'\\+'} *//')"
     if [[ -z "$cmd" ]]; then
       cmd="$BASH_COMMAND"
     fi

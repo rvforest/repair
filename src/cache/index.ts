@@ -65,7 +65,9 @@ export class CacheManager {
       // If cache is corrupted, delete it
       try {
         fs.unlinkSync(cachePath);
-      } catch {}
+      } catch {
+        // Best effort: a failed cleanup should still behave as a cache miss.
+      }
       return null;
     }
   }

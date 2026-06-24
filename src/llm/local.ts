@@ -3,6 +3,14 @@ import { AnalysisRequest, AnalysisResponse } from '../types';
 import { LLMProvider } from './base';
 import { buildAnalysisPrompt, parseAnalysisResponse } from './prompt';
 
+interface OpenAICompatibleChatResponse {
+  choices: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+}
+
 export class LocalProvider extends LLMProvider {
   private defaultModel = 'llama2';
 
@@ -43,7 +51,7 @@ export class LocalProvider extends LLMProvider {
       throw this.buildHttpError('Local model', response.status, response.statusText);
     }
 
-    const data = await response.json() as any;
+    const data = (await response.json()) as OpenAICompatibleChatResponse;
     const content = data.choices[0]?.message?.content;
 
     if (!content) {

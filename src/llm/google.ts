@@ -3,6 +3,16 @@ import { AnalysisRequest, AnalysisResponse } from '../types';
 import { LLMProvider } from './base';
 import { buildAnalysisPrompt, parseAnalysisResponse } from './prompt';
 
+interface GoogleGenerateContentResponse {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string;
+      }>;
+    };
+  }>;
+}
+
 export class GoogleProvider extends LLMProvider {
   private defaultModel = 'gemini-2.5-flash-lite';
 
@@ -41,7 +51,7 @@ export class GoogleProvider extends LLMProvider {
       throw this.buildHttpError('Google', response.status, response.statusText);
     }
 
-    const data = await response.json() as any;
+    const data = (await response.json()) as GoogleGenerateContentResponse;
     const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!content) {
