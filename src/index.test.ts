@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { wasErrorDisplayed } from './errors';
 import { main } from './index';
+import { ProviderHttpError } from './llm/base';
 import { AnalysisRequest, AnalysisResponse, Config, SanitizedSessionBundle } from './types';
 
 type MainDependencies = NonNullable<Parameters<typeof main>[1]>;
@@ -366,5 +367,54 @@ describe('main shell-session flow', () => {
 
     expect(providerFactory).toHaveBeenCalledWith(expect.objectContaining({ apiKey: secret }));
     expect(logSpy.mock.calls.flat().join(' ')).not.toContain(secret);
+  });
+
+  it('shows model guidance instead of API-key guidance for invalid provider models', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const providerFactory = vi.fn().mockReturnValue({
+      analyze: vi.fn().mockRejectedValue(
+        new ProviderHttpError(
+          'OpenRouter',
+          400,
+          'Bad Request',
+          'Invalid model anthropic/claude-haiku-4-5-20251001',
+        ),
+      ),
+    });
+
+    await expect(
+      main(
+        { cacheEnabled: false },
+        {
+          sessionStore: {
+            read: vi.fn().mockResolvedValue({
+              command: 'false',
+              output: 'failed',
+              exitCode: 1,
+              timestamp: '2026-06-20T00:00:00.000Z',
+              truncated: false,
+              redactionsApplied: 0,
+            }),
+            toAnalysisRequest: vi.fn().mockReturnValue({ command: 'false', output: 'failed' }),
+          } as unknown as MainDependencies['sessionStore'],
+          configManager: {
+            load: vi.fn().mockResolvedValue({
+              provider: 'local',
+              cacheEnabled: false,
+              confirmBeforeSend: false,
+            }),
+            validate: vi.fn(),
+          },
+          llmProviderFactory: providerFactory,
+        },
+      ),
+    ).rejects.toThrow('Invalid model');
+
+    const output = errorSpy.mock.calls.flat().join('\n');
+    expect(output).toContain('Check your model configuration');
+    expect(output).toContain('REPAIR_MODEL');
+    expect(output).toContain('provider model catalog');
+    expect(output).not.toContain('Check your API key configuration');
+    expect(output).not.toContain('REPAIR_API_KEY');
   });
 });

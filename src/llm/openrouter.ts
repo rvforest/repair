@@ -1,6 +1,6 @@
 import fetch from 'node-fetch';
 import { AnalysisRequest, AnalysisResponse } from '../types';
-import { LLMProvider } from './base';
+import { LLMProvider, readProviderErrorDetail } from './base';
 import { buildAnalysisPrompt, parseAnalysisResponse } from './prompt';
 
 interface OpenRouterChatResponse {
@@ -12,7 +12,7 @@ interface OpenRouterChatResponse {
 }
 
 export class OpenRouterProvider extends LLMProvider {
-  private defaultModel = 'anthropic/claude-haiku-4-5-20251001';
+  private defaultModel = 'anthropic/claude-haiku-4.5';
 
   async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
     const model = this.model || this.defaultModel;
@@ -45,7 +45,12 @@ export class OpenRouterProvider extends LLMProvider {
     });
 
     if (!response.ok) {
-      throw this.buildHttpError('OpenRouter', response.status, response.statusText);
+      throw this.buildHttpError(
+        'OpenRouter',
+        response.status,
+        response.statusText,
+        await readProviderErrorDetail(response),
+      );
     }
 
     const data = (await response.json()) as OpenRouterChatResponse;

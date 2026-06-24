@@ -1,5 +1,6 @@
 import { ConfigManager } from './config';
 import { createLLMProvider } from './llm';
+import { ProviderHttpError, classifyProviderError } from './llm/base';
 import { SecurityFilter } from './security';
 import { CacheManager } from './cache';
 import { OutputFormatter } from './output';
@@ -200,7 +201,10 @@ export async function main(options: MainOptions = {}, dependencies: MainDependen
       console.error('\n' + formatter.formatError(error.message));
 
       // Provide helpful context for common errors
-      if (error.message.includes('API') || error.message.includes('authentication')) {
+      if (isInvalidModelError(error)) {
+        console.error('\n' + formatter.formatInfo('Check your model configuration'));
+        console.error(formatter.formatInfo('Set REPAIR_MODEL to a valid provider model, or check the provider model catalog'));
+      } else if (isAuthenticationError(error)) {
         console.error('\n' + formatter.formatInfo('Check your API key configuration'));
         console.error(formatter.formatInfo('Run repair auth set on Linux/WSL, or set REPAIR_API_KEY'));
       }
@@ -218,6 +222,22 @@ export async function main(options: MainOptions = {}, dependencies: MainDependen
 
     throw error;
   }
+}
+
+function isInvalidModelError(error: Error): boolean {
+  if (error instanceof ProviderHttpError) {
+    return error.kind === 'invalid-model';
+  }
+
+  return classifyProviderError(0, error.message) === 'invalid-model';
+}
+
+function isAuthenticationError(error: Error): boolean {
+  if (error instanceof ProviderHttpError) {
+    return error.kind === 'authentication';
+  }
+
+  return classifyProviderError(0, error.message) === 'authentication';
 }
 
 function getSessionErrorCode(error: unknown): 'missing' | 'invalid' | undefined {
