@@ -169,10 +169,10 @@ Default model: `gemini-2.5-flash-lite`
 ```bash
 export REPAIR_PROVIDER=openrouter
 export REPAIR_API_KEY=sk-or-...
-export REPAIR_MODEL=anthropic/claude-haiku-4-5-20251001  # optional
+export REPAIR_MODEL=anthropic/claude-haiku-4.5  # optional
 ```
 
-Default model: `anthropic/claude-haiku-4-5-20251001`
+Default model: `anthropic/claude-haiku-4.5`
 
 ### Local Models (Ollama, LM Studio)
 
@@ -365,6 +365,12 @@ For CI, headless use, or unsupported platforms:
 ```bash
 export REPAIR_API_KEY=your-key-here
 ```
+
+### Invalid provider model
+
+If the provider reports an invalid or unavailable model, set `REPAIR_MODEL` to
+a valid model ID from that provider's model catalog. OpenRouter model IDs can
+differ from the provider-native IDs used by direct provider integrations.
 
 ### "No captured command output is available yet"
 
