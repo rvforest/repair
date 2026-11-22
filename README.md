@@ -15,7 +15,7 @@ A CLI tool that uses Large Language Models to explain terminal errors and sugges
 
 ## Requirements
 
-- **Node.js** 16.0.0 or higher
+- **Node.js** 22.0.0 or higher
 - **Supported shell**: Bash or Zsh
 
 ## Installation
