@@ -4,7 +4,7 @@ Get up and running with repAIr in 5 minutes!
 
 ## Prerequisites
 
-1. Install Node.js 16+ (if not already installed):
+1. Install Node.js 22+ (if not already installed):
 
    ```bash
    # Check version
